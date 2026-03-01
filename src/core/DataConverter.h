@@ -144,44 +144,88 @@ private:
 
     // Minimal YAML parser — handles flat key: value and simple arrays
     static json parseYaml(const std::string& s) {
-        json result = json::object();
         std::istringstream ss(s);
         std::string line;
-        std::string currentKey;
-        json* currentArray = nullptr;
+        std::vector<std::string> lines;
 
         while (std::getline(ss, line)) {
-            // Strip comments
             auto commentPos = line.find('#');
             if (commentPos != std::string::npos)
                 line = line.substr(0, commentPos);
+            lines.push_back(line);
+        }
 
-            if (line.find_first_not_of(" \t\r\n") == std::string::npos)
-                continue;
+        // Check if top level is a sequence (starts with "- ")
+        bool isSequence = false;
+        for (auto& l : lines) {
+            std::string trimmed = trim(l);
+            if (trimmed.empty()) continue;
+            if (trimmed.substr(0, 2) == "- ") isSequence = true;
+            break;
+        }
 
-            // Array item
-            if (line.find("  - ") == 0 || line.find("- ") == 0) {
-                size_t dashPos = line.find("- ");
-                std::string val = trim(line.substr(dashPos + 2));
-                if (currentArray) {
-                    (*currentArray).push_back(coerceValue(val));
+        if (isSequence) {
+            json result = json::array();
+            json current = json::object();
+            bool started = false;
+
+            for (auto& l : lines) {
+                std::string trimmed = trim(l);
+                if (trimmed.empty()) continue;
+
+                if (trimmed.substr(0, 2) == "- ") {
+                    if (started && !current.empty())
+                        result.push_back(current);
+                    current = json::object();
+                    started = true;
+                    // Parse the key: value on the same line as "-"
+                    std::string rest = trim(trimmed.substr(2));
+                    auto colonPos = rest.find(':');
+                    if (colonPos != std::string::npos) {
+                        std::string key = trim(rest.substr(0, colonPos));
+                        std::string val = trim(rest.substr(colonPos + 1));
+                        current[key] = coerceValue(val);
+                    }
+                } else {
+                    // Indented key: value inside current object
+                    auto colonPos = trimmed.find(':');
+                    if (colonPos != std::string::npos) {
+                        std::string key = trim(trimmed.substr(0, colonPos));
+                        std::string val = trim(trimmed.substr(colonPos + 1));
+                        current[key] = coerceValue(val);
+                    }
                 }
+            }
+            if (started && !current.empty())
+                result.push_back(current);
+            return result;
+        }
+
+        // Flat object parsing (original behavior)
+        json result = json::object();
+        json* currentArray = nullptr;
+
+        for (auto& l : lines) {
+            std::string line2 = l;
+            if (line2.find_first_not_of(" \t\r\n") == std::string::npos) continue;
+
+            if (line2.find("  - ") == 0 || line2.find("- ") == 0) {
+                size_t dashPos = line2.find("- ");
+                std::string val = trim(line2.substr(dashPos + 2));
+                if (currentArray) (*currentArray).push_back(coerceValue(val));
                 continue;
             }
 
-            // key: value
-            auto colonPos = line.find(':');
+            auto colonPos = line2.find(':');
             if (colonPos != std::string::npos) {
-                std::string key = trim(line.substr(0, colonPos));
-                std::string val = trim(line.substr(colonPos + 1));
+                std::string key = trim(line2.substr(0, colonPos));
+                std::string val = trim(line2.substr(colonPos + 1));
                 if (val.empty()) {
-                    // Start of a sequence
                     result[key] = json::array();
-                    currentKey   = key;
                     currentArray = &result[key];
                 } else {
                     currentArray = nullptr;
-                    result[key]  = coerceValue(val);
+                    result[key] = coerceValue(val);
                 }
             }
         }
