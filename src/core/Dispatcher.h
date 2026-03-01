@@ -36,6 +36,16 @@ public:
         job.inputFormat  = *inFmt;
         job.outputFormat = *outFmt;
 
+        // Same format — allow re-encode for media types
+        if (inFmt->ext == outFmt->ext) {
+            if (inFmt->category == Category::Audio ||
+                inFmt->category == Category::Video ||
+                inFmt->category == Category::Image) {
+                return route(job);
+            }
+            return ConversionResult::err("Input and output are the same format");
+        }
+
         // Check the conversion is supported
         if (!reg.canConvert(inFmt->ext, outFmt->ext)) {
             return ConversionResult::err(

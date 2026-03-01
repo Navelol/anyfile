@@ -63,6 +63,17 @@ struct ConversionJob {
     Format      inputFormat;
     Format      outputFormat;
     ProgressFn  onProgress;  // optional, can be nullptr
+
+    // ── Optional media encoding overrides ─────────────────────────────────
+    // If unset, MediaConverter will apply sensible defaults per output format.
+    std::optional<std::string> videoCodec;    // e.g. "libx264", "libx265", "vp9"
+    std::optional<std::string> audioCodec;    // e.g. "aac", "libmp3lame", "libopus"
+    std::optional<std::string> videoBitrate;  // e.g. "2M", "500k"
+    std::optional<std::string> audioBitrate;  // e.g. "192k", "320k"
+    std::optional<std::string> resolution;    // e.g. "1920x1080", "1280x720"
+    std::optional<std::string> framerate;     // e.g. "30", "60", "24"
+    std::optional<int>         crf;           // e.g. 18 (lossless-ish) to 51 (terrible)
+    std::optional<std::string> pixelFormat;   // e.g. "yuv420p", "yuv444p"
 };
 
 } // namespace converter
