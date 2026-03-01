@@ -40,7 +40,7 @@ static std::string humanSize(size_t bytes) {
 
 static void printBanner() {
     std::cout << COL_BOLD
-              << "\n  CONVERT_\n"
+              << "\n  ANYFILE_\n"
               << COL_RESET
               << COL_DIM
               << "  Universal File Converter — v0.1\n\n"
@@ -50,17 +50,17 @@ static void printBanner() {
 static void printUsage() {
     std::cout
         << "  " COL_BOLD "Usage:" COL_RESET "\n"
-        << "    converter <input> <output> [options]\n"
-        << "    converter <input> --to <ext> [options]\n"
-        << "    converter --formats\n"
-        << "    converter --help\n\n"
+        << "    anyfile <input> <output> [options]\n"
+        << "    anyfile <input> --to <ext> [options]\n"
+        << "    anyfile --formats\n"
+        << "    anyfile --help\n\n"
         << "  " COL_BOLD "Examples:" COL_RESET "\n"
-        << "    converter video.mp4 audio.mp3\n"
-        << "    converter model.fbx model.glb\n"
-        << "    converter image.png --to webp\n"
-        << "    converter video.mov output.mp4 --video-codec libx265 --crf 18\n"
-        << "    converter video.mp4 output.mp4 --resolution 1280x720 --framerate 30\n"
-        << "    converter audio.wav output.mp3 --audio-bitrate 320k\n\n"
+        << "    anyfile video.mp4 audio.mp3\n"
+        << "    anyfile model.fbx model.glb\n"
+        << "    anyfile image.png --to webp\n"
+        << "    anyfile video.mov output.mp4 --video-codec libx265 --crf 18\n"
+        << "    anyfile video.mp4 output.mp4 --resolution 1280x720 --framerate 30\n"
+        << "    anyfile audio.wav output.mp3 --audio-bitrate 320k\n\n"
         << "  " COL_BOLD "Media options:" COL_RESET "\n"
         << "    --video-codec  <codec>    e.g. libx264, libx265, vp9, mpeg4\n"
         << "    --audio-codec  <codec>    e.g. aac, libmp3lame, libopus, flac\n"
