@@ -9,6 +9,25 @@ BIN="$REPO/build/linux/bin/anyfile"
 TESTS="$REPO/tests"
 OUT="$TESTS/test_output"
 
+WINDOWS_MODE=0
+if [ "$1" == "--windows" ]; then
+    BIN="$REPO/build/windows/bin/anyfile.exe"
+    WINDOWS_MODE=1
+else
+    BIN="$REPO/build/linux/bin/anyfile"
+fi
+
+# Convert a WSL path to a Windows path when running the Windows binary.
+# Bash file-existence checks always use the WSL path; only the arguments
+# passed to the .exe need translation.
+to_bin_path() {
+    if [ "$WINDOWS_MODE" -eq 1 ]; then
+        wslpath -w "$1"
+    else
+        echo "$1"
+    fi
+}
+
 # Colors
 GREEN="\033[0;32m"
 RED="\033[0;31m"
@@ -21,6 +40,30 @@ PASS=0
 FAIL=0
 SKIP=0
 
+# Tool availability — sections that depend on external tools are skipped (not
+# failed) when the required tool isn't found on this machine.
+HAS_LIBREOFFICE=0; command -v libreoffice  > /dev/null 2>&1 && HAS_LIBREOFFICE=1
+HAS_PANDOC=0;      command -v pandoc        > /dev/null 2>&1 && HAS_PANDOC=1
+HAS_EBOOK=0;       command -v ebook-convert > /dev/null 2>&1 && HAS_EBOOK=1
+HAS_PDFTOPPM=0;    command -v pdftoppm      > /dev/null 2>&1 && HAS_PDFTOPPM=1
+
+# skip_section <reason> <name1> [name2 ...]
+# Prints every listed test as SKIP and increments the counter.
+skip_section() {
+    local reason="$1"; shift
+    for name in "$@"; do
+        echo -e "  ${YELLOW}SKIP${RESET}  $name  ($reason)"
+        ((SKIP++))
+    done
+}
+
+# On Windows mode, files created by anyfile.exe may be locked/ACL-protected and
+# cannot always be deleted by WSL's rm. Use cmd.exe to do a full Windows-side
+# rmdir first, then fall back to rm -rf for any residual WSL-managed files.
+if [ "$WINDOWS_MODE" -eq 1 ] && command -v cmd.exe > /dev/null 2>&1; then
+    WIN_OUT=$(wslpath -w "$OUT" 2>/dev/null)
+    cmd.exe /c "if exist \"$WIN_OUT\" rmdir /s /q \"$WIN_OUT\"" > /dev/null 2>&1
+fi
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
@@ -39,7 +82,9 @@ run_test() {
         return
     fi
 
-    "$BIN" "$input" "$output" > /dev/null 2>&1
+    local bin_input; bin_input=$(to_bin_path "$input")
+    local bin_output; bin_output=$(to_bin_path "$output")
+    "$BIN" "$bin_input" "$bin_output" > /dev/null 2>&1
 
     if [ $? -eq 0 ] && [ -f "$output" ] && [ -s "$output" ]; then
         echo -e "  ${GREEN}PASS${RESET}  $desc"
@@ -64,7 +109,9 @@ run_test_flags() {
         return
     fi
 
-    "$BIN" "$input" "$output" $flags > /dev/null 2>&1
+    local bin_input; bin_input=$(to_bin_path "$input")
+    local bin_output; bin_output=$(to_bin_path "$output")
+    "$BIN" "$bin_input" "$bin_output" $flags > /dev/null 2>&1
 
     if [ $? -eq 0 ] && [ -f "$output" ] && [ -s "$output" ]; then
         echo -e "  ${GREEN}PASS${RESET}  $desc"
@@ -90,7 +137,9 @@ run_batch_test() {
         return
     fi
 
-    "$BIN" "$input_dir" "$format_arg" "$output_dir" $flags > /dev/null 2>&1
+    local bin_input_dir; bin_input_dir=$(to_bin_path "$input_dir")
+    local bin_output_dir; bin_output_dir=$(to_bin_path "$output_dir")
+    "$BIN" "$bin_input_dir" "$format_arg" "$bin_output_dir" $flags > /dev/null 2>&1
 
     if [ -d "$output_dir" ] && [ "$(ls -A "$output_dir" 2>/dev/null)" ]; then
         echo -e "  ${GREEN}PASS${RESET}  $desc"
@@ -154,6 +203,9 @@ AGE=30
 CITY="Tampa"
 EOF
 
+# Ensure all output subdirs exist before copying into them
+mkdir -p "$OUT/images" "$OUT/audio" "$OUT/video" "$OUT/models" "$OUT/ebooks" "$OUT/batch"
+
 # Copy real test files if they exist
 [ -f "$TESTS/data/people.json" ]       && cp "$TESTS/data/people.json"       "$OUT/data/people.json"
 [ -f "$TESTS/documents/test.docx" ]    && cp "$TESTS/documents/test.docx"    "$OUT/documents/seed.docx"
@@ -163,6 +215,7 @@ EOF
 [ -f "$TESTS/documents/test.pdf" ]     && cp "$TESTS/documents/test.pdf"     "$OUT/documents/seed.pdf"
 [ -f "$TESTS/ebooks/test.epub" ]       && cp "$TESTS/ebooks/test.epub"       "$OUT/ebooks/seed.epub"
 [ -f "$TESTS/ebooks/test.mobi" ]       && cp "$TESTS/ebooks/test.mobi"       "$OUT/ebooks/seed.mobi"
+[ -f "$TESTS/ebooks/test.fb2" ]        && cp "$TESTS/ebooks/test.fb2"        "$OUT/ebooks/seed.fb2"
 [ -f "$TESTS/images/test.png" ]        && cp "$TESTS/images/test.png"        "$OUT/images/seed.png"
 [ -f "$TESTS/audio/test.mp3" ]         && cp "$TESTS/audio/test.mp3"         "$OUT/audio/seed.mp3"
 [ -f "$TESTS/models/seed.obj" ]        && cp "$TESTS/models/seed.obj"        "$OUT/models/seed.obj"
@@ -170,8 +223,6 @@ EOF
 [ -f "$TESTS/models/seed.stl" ]        && cp "$TESTS/models/seed.stl"        "$OUT/models/seed.stl"
 [ -f "$TESTS/video/test.avi" ]         && cp "$TESTS/video/test.avi"         "$OUT/video/seed.avi"
 [ -f "$TESTS/video/test.mp4" ]         && cp "$TESTS/video/test.mp4"         "$OUT/video/seed.mp4"
-
-mkdir -p "$OUT/images" "$OUT/audio" "$OUT/video" "$OUT/models" "$OUT/ebooks" "$OUT/batch"
 
 echo -e "  ${GREEN}Done${RESET}"
 
@@ -231,31 +282,42 @@ run_test "XZ   → ZIP"   "$OUT/archives/out.xz"    "$OUT/archives/from_xz.zip"
 
 section "Documents"
 
-run_test "TXT  → PDF"   "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.pdf"
-run_test "TXT  → DOCX"  "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.docx"
-run_test "TXT  → ODT"   "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.odt"
-run_test "TXT  → HTML"  "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.html"
-run_test "MD   → PDF"   "$OUT/documents/seed.md"    "$OUT/documents/from_md.pdf"
-run_test "MD   → DOCX"  "$OUT/documents/seed.md"    "$OUT/documents/from_md.docx"
-run_test "MD   → HTML"  "$OUT/documents/seed.md"    "$OUT/documents/from_md.html"
-run_test "MD   → ODT"   "$OUT/documents/seed.md"    "$OUT/documents/from_md.odt"
-run_test "HTML → PDF"   "$OUT/documents/seed.html"  "$OUT/documents/from_html.pdf"
-run_test "HTML → DOCX"  "$OUT/documents/seed.html"  "$OUT/documents/from_html.docx"
-run_test "HTML → ODT"   "$OUT/documents/seed.html"  "$OUT/documents/from_html.odt"
-run_test "DOCX → PDF"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.pdf"
-run_test "DOCX → ODT"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.odt"
-run_test "DOCX → RTF"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.rtf"
-run_test "DOCX → TXT"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.txt"
-run_test "ODT  → PDF"   "$OUT/documents/seed.odt"   "$OUT/documents/from_odt.pdf"
-run_test "ODT  → DOCX"  "$OUT/documents/seed.odt"   "$OUT/documents/from_odt.docx"
-run_test "XLSX → PDF"   "$OUT/documents/seed.xlsx"  "$OUT/documents/from_xlsx.pdf"
-run_test "XLSX → ODS"   "$OUT/documents/seed.xlsx"  "$OUT/documents/from_xlsx.ods"
-run_test "XLSX → CSV"   "$OUT/documents/seed.xlsx"  "$OUT/documents/from_xlsx.csv"
-run_test "ODS  → XLSX"  "$OUT/documents/from_xlsx.ods"  "$OUT/documents/from_ods.xlsx"
-run_test "PPTX → PDF"   "$OUT/documents/seed.pptx"  "$OUT/documents/from_pptx.pdf"
-run_test "PPTX → ODP"   "$OUT/documents/seed.pptx"  "$OUT/documents/from_pptx.odp"
-run_test "CSV  → ODS"   "$OUT/data/seed.csv"        "$OUT/documents/from_csv.ods"
-run_test "CSV  → XLSX"  "$OUT/data/seed.csv"        "$OUT/documents/from_csv.xlsx"
+if [ "$HAS_LIBREOFFICE" -eq 0 ] && [ "$HAS_PANDOC" -eq 0 ]; then
+    skip_section "libreoffice/pandoc not installed" \
+        "TXT  → PDF" "TXT  → DOCX" "TXT  → ODT" "TXT  → HTML" \
+        "MD   → PDF" "MD   → DOCX" "MD   → HTML" "MD   → ODT" \
+        "HTML → PDF" "HTML → DOCX" "HTML → ODT" \
+        "DOCX → PDF" "DOCX → ODT" "DOCX → RTF" "DOCX → TXT" \
+        "ODT  → PDF" "ODT  → DOCX" \
+        "XLSX → PDF" "XLSX → ODS" "XLSX → CSV" "ODS  → XLSX" \
+        "PPTX → PDF" "PPTX → ODP" "CSV  → ODS" "CSV  → XLSX"
+else
+    run_test "TXT  → PDF"   "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.pdf"
+    run_test "TXT  → DOCX"  "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.docx"
+    run_test "TXT  → ODT"   "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.odt"
+    run_test "TXT  → HTML"  "$OUT/documents/seed.txt"   "$OUT/documents/from_txt.html"
+    run_test "MD   → PDF"   "$OUT/documents/seed.md"    "$OUT/documents/from_md.pdf"
+    run_test "MD   → DOCX"  "$OUT/documents/seed.md"    "$OUT/documents/from_md.docx"
+    run_test "MD   → HTML"  "$OUT/documents/seed.md"    "$OUT/documents/from_md.html"
+    run_test "MD   → ODT"   "$OUT/documents/seed.md"    "$OUT/documents/from_md.odt"
+    run_test "HTML → PDF"   "$OUT/documents/seed.html"  "$OUT/documents/from_html.pdf"
+    run_test "HTML → DOCX"  "$OUT/documents/seed.html"  "$OUT/documents/from_html.docx"
+    run_test "HTML → ODT"   "$OUT/documents/seed.html"  "$OUT/documents/from_html.odt"
+    run_test "DOCX → PDF"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.pdf"
+    run_test "DOCX → ODT"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.odt"
+    run_test "DOCX → RTF"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.rtf"
+    run_test "DOCX → TXT"   "$OUT/documents/seed.docx"  "$OUT/documents/from_docx.txt"
+    run_test "ODT  → PDF"   "$OUT/documents/seed.odt"   "$OUT/documents/from_odt.pdf"
+    run_test "ODT  → DOCX"  "$OUT/documents/seed.odt"   "$OUT/documents/from_odt.docx"
+    run_test "XLSX → PDF"   "$OUT/documents/seed.xlsx"  "$OUT/documents/from_xlsx.pdf"
+    run_test "XLSX → ODS"   "$OUT/documents/seed.xlsx"  "$OUT/documents/from_xlsx.ods"
+    run_test "XLSX → CSV"   "$OUT/documents/seed.xlsx"  "$OUT/documents/from_xlsx.csv"
+    run_test "ODS  → XLSX"  "$OUT/documents/from_xlsx.ods"  "$OUT/documents/from_ods.xlsx"
+    run_test "PPTX → PDF"   "$OUT/documents/seed.pptx"  "$OUT/documents/from_pptx.pdf"
+    run_test "PPTX → ODP"   "$OUT/documents/seed.pptx"  "$OUT/documents/from_pptx.odp"
+    run_test "CSV  → ODS"   "$OUT/data/seed.csv"        "$OUT/documents/from_csv.ods"
+    run_test "CSV  → XLSX"  "$OUT/data/seed.csv"        "$OUT/documents/from_csv.xlsx"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PDF → IMAGE (cross-category)
@@ -264,25 +326,29 @@ run_test "CSV  → XLSX"  "$OUT/data/seed.csv"        "$OUT/documents/from_csv.x
 section "PDF → Image"
 
 # PDF → image bundles pages into a zip; pass the image ext and the binary renames to .zip
-for _ext in png jpg; do
-    _desc="PDF  → ${_ext^^} (zip)"
-    _in="$OUT/documents/seed.pdf"
-    _arg="$OUT/documents/from_pdf_${_ext}.${_ext}"
-    _out="$OUT/documents/from_pdf_${_ext}.zip"
-    if [ ! -f "$_in" ]; then
-        echo -e "  ${YELLOW}SKIP${RESET}  $_desc  (no input file)"
-        ((SKIP++))
-    else
-        "$BIN" "$_in" "$_arg" > /dev/null 2>&1
-        if [ -f "$_out" ] && [ -s "$_out" ]; then
-            echo -e "  ${GREEN}PASS${RESET}  $_desc"
-            ((PASS++))
+if [ "$HAS_PDFTOPPM" -eq 0 ]; then
+    skip_section "pdftoppm not installed" "PDF  → PNG (zip)" "PDF  → JPG (zip)"
+else
+    for _ext in png jpg; do
+        _desc="PDF  → ${_ext^^} (zip)"
+        _in="$OUT/documents/seed.pdf"
+        _arg="$OUT/documents/from_pdf_${_ext}.${_ext}"
+        _out="$OUT/documents/from_pdf_${_ext}.zip"
+        if [ ! -f "$_in" ]; then
+            echo -e "  ${YELLOW}SKIP${RESET}  $_desc  (no input file)"
+            ((SKIP++))
         else
-            echo -e "  ${RED}FAIL${RESET}  $_desc"
-            ((FAIL++))
+            "$BIN" "$(to_bin_path "$_in")" "$(to_bin_path "$_arg")" > /dev/null 2>&1
+            if [ -f "$_out" ] && [ -s "$_out" ]; then
+                echo -e "  ${GREEN}PASS${RESET}  $_desc"
+                ((PASS++))
+            else
+                echo -e "  ${RED}FAIL${RESET}  $_desc"
+                ((FAIL++))
+            fi
         fi
-    fi
-done
+    done
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # EBOOKS
@@ -290,13 +356,18 @@ done
 
 section "Ebooks"
 
-run_test "EPUB → MOBI"  "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.mobi"
-run_test "EPUB → AZW3"  "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.azw3"
-run_test "EPUB → PDF"   "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.pdf"
-run_test "MOBI → EPUB"  "$OUT/ebooks/seed.mobi"  "$OUT/ebooks/from_mobi.epub"
-run_test "MOBI → AZW3"  "$OUT/ebooks/seed.mobi"  "$OUT/ebooks/from_mobi.azw3"
-run_test "FB2  → EPUB"  "$OUT/ebooks/seed.fb2"   "$OUT/ebooks/from_fb2.epub"
-run_test "DJVU → PDF"   "$OUT/ebooks/seed.djvu"  "$OUT/ebooks/from_djvu.pdf"
+if [ "$HAS_EBOOK" -eq 0 ]; then
+    skip_section "ebook-convert not installed" \
+        "EPUB → MOBI" "EPUB → AZW3" "EPUB → PDF" \
+        "MOBI → EPUB" "MOBI → AZW3" "FB2  → EPUB"
+else
+    run_test "EPUB → MOBI"  "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.mobi"
+    run_test "EPUB → AZW3"  "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.azw3"
+    run_test "EPUB → PDF"   "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.pdf"
+    run_test "MOBI → EPUB"  "$OUT/ebooks/seed.mobi"  "$OUT/ebooks/from_mobi.epub"
+    run_test "MOBI → AZW3"  "$OUT/ebooks/seed.mobi"  "$OUT/ebooks/from_mobi.azw3"
+    run_test "FB2  → EPUB"  "$OUT/ebooks/seed.fb2"   "$OUT/ebooks/from_fb2.epub"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IMAGES
@@ -396,7 +467,7 @@ section "Single File — New Syntax"
 
 # Auto-named output
 if [ -f "$OUT/audio/seed.mp3" ]; then
-    "$BIN" "$OUT/audio/seed.mp3" flac > /dev/null 2>&1
+    "$BIN" "$(to_bin_path "$OUT/audio/seed.mp3")" flac > /dev/null 2>&1
     if [ -f "$OUT/audio/seed.flac" ] && [ -s "$OUT/audio/seed.flac" ]; then
         echo -e "  ${GREEN}PASS${RESET}  Auto-named: MP3 → seed.flac"
         ((PASS++))
@@ -411,8 +482,8 @@ fi
 
 # Conflict detection — run same conversion twice, second should fail (exit 1)
 if [ -f "$OUT/audio/seed.mp3" ]; then
-    "$BIN" "$OUT/audio/seed.mp3" "$OUT/audio/conflict_test.ogg" > /dev/null 2>&1
-    "$BIN" "$OUT/audio/seed.mp3" "$OUT/audio/conflict_test.ogg" > /dev/null 2>&1
+    "$BIN" "$(to_bin_path "$OUT/audio/seed.mp3")" "$(to_bin_path "$OUT/audio/conflict_test.ogg")" > /dev/null 2>&1
+    "$BIN" "$(to_bin_path "$OUT/audio/seed.mp3")" "$(to_bin_path "$OUT/audio/conflict_test.ogg")" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo -e "  ${GREEN}PASS${RESET}  Conflict detection: second run blocked"
         ((PASS++))
@@ -427,7 +498,7 @@ fi
 
 # --f overwrite
 if [ -f "$OUT/audio/seed.mp3" ]; then
-    "$BIN" "$OUT/audio/seed.mp3" "$OUT/audio/conflict_test.ogg" --f > /dev/null 2>&1
+    "$BIN" "$(to_bin_path "$OUT/audio/seed.mp3")" "$(to_bin_path "$OUT/audio/conflict_test.ogg")" --f > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo -e "  ${GREEN}PASS${RESET}  Force overwrite (--f)"
         ((PASS++))

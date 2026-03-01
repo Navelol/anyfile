@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"
+             xmlns:l="http://www.w3.org/1999/xlink">
+  <description>
+    <title-info>
+      <genre>other</genre>
+      <author><first-name>Test</first-name><last-name>Author</last-name></author>
+      <book-title>Anyfile Test Book</book-title>
+      <lang>en</lang>
+    </title-info>
+    <document-info>
+      <author><nickname>anyfile</nickname></author>
+      <date>2026-03-01</date>
+      <version>1.0</version>
+    </document-info>
+  </description>
+  <body>
+    <section>
+      <title><p>Chapter One</p></title>
+      <p>This is a test FB2 file for the anyfile conversion test suite.</p>
+      <p>It contains minimal valid content to verify FB2 to EPUB conversion.</p>
+    </section>
+  </body>
+</FictionBook>

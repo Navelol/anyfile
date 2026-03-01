@@ -8,6 +8,19 @@
 namespace converter {
 
 class DocumentConverter {
+private:
+#ifdef _WIN32
+    static constexpr const char* DEVNULL    = "2>NUL";
+    static constexpr const char* AND_CMD    = " & ";
+    static constexpr const char* RM_CMD     = "del /f /q ";
+    static constexpr const char* SOFFICE_BIN = "soffice";  // Windows uses soffice, not libreoffice
+#else
+    static constexpr const char* DEVNULL    = "2>/dev/null";
+    static constexpr const char* AND_CMD    = " && ";
+    static constexpr const char* RM_CMD     = "rm -f ";
+    static constexpr const char* SOFFICE_BIN = "libreoffice";
+#endif
+
 public:
     static ConversionResult convert(const ConversionJob& job) {
         auto start = std::chrono::steady_clock::now();
@@ -51,14 +64,15 @@ private:
     }
 
     static bool isEbook(const std::string& ext) {
-        return ext == "epub" || ext == "mobi" || ext == "azw3" || ext == "azw";
+        return ext == "epub" || ext == "mobi" || ext == "azw3" || ext == "azw"
+            || ext == "fb2";  // ebook-convert handles fb2 reliably
     }
 
     static std::string convertEbook(const ConversionJob& job) {
         std::string cmd =
             "ebook-convert \"" + job.inputPath.string() + "\"" +
             " \"" + job.outputPath.string() + "\"" +
-            " 2>/dev/null";
+            " " + DEVNULL;
 
         int ret = std::system(cmd.c_str());
         if (ret != 0)
@@ -105,10 +119,10 @@ private:
         }
 
         std::string cmd =
-            "libreoffice --headless --convert-to " + filter +
+            std::string(SOFFICE_BIN) + " --headless --convert-to " + filter +
             " --outdir \"" + tempDir.string() + "\"" +
             " \"" + job.inputPath.string() + "\"" +
-            " 2>/dev/null";
+            " " + DEVNULL;
 
         int ret = std::system(cmd.c_str());
         if (ret != 0) {
@@ -146,7 +160,7 @@ private:
         std::string cmd =
             "pandoc \"" + job.inputPath.string() + "\"" +
             " -o \"" + job.outputPath.string() + "\"" +
-            " 2>/dev/null";
+            " " + DEVNULL;
 
         int ret = std::system(cmd.c_str());
         if (ret != 0)

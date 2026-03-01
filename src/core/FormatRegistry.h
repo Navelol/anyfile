@@ -184,7 +184,7 @@ private:
         // Video
         targets("mp4",  {"mp3","wav","aac","webm","mkv","avi","mov","gif"});
         targets("mov",  {"mp4","mp3","wav","webm","gif"});
-        targets("avi",  {"mp4","mp3","wav","webm","mkv"});
+        targets("avi",  {"mp4","mp3","wav","webm","mkv","gif"});
         targets("mkv",  {"mp4","mp3","wav","webm","avi"});
         targets("webm", {"mp4","mp3","wav","gif"});
         targets("flv",  {"mp4","mp3","wav"});

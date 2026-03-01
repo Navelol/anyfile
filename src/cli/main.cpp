@@ -1,3 +1,6 @@
+#ifdef _WIN32
+    #include <windows.h>
+#endif
 #include <iostream>
 #include <string>
 #include <vector>
@@ -44,7 +47,7 @@ static void printBanner() {
               << "\n  ANYFILE_\n"
               << COL_RESET
               << COL_DIM
-              << "  Universal File Converter — v0.1\n\n"
+              << "  Universal File Converter - v0.1\n\n"
               << COL_RESET;
 }
 
@@ -75,7 +78,7 @@ static void printUsage() {
         << "    --audio-bitrate <rate>  e.g. 192k, 320k\n"
         << "    --resolution   <WxH>   e.g. 1920x1080, 1280x720\n"
         << "    --framerate    <fps>   e.g. 24, 30, 60\n"
-        << "    --crf          <n>     Quality: 0 (best) – 51 (worst)\n"
+        << "    --crf          <n>     Quality: 0 (best) - 51 (worst)\n"
         << "    --pixel-format <fmt>   e.g. yuv420p, yuv444p\n\n";
 }
 
@@ -331,6 +334,9 @@ static int runBatch(const ParsedArgs& args) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
+    #ifdef _WIN32
+        SetConsoleOutputCP(CP_UTF8);
+    #endif
     printBanner();
 
     if (argc < 2) {

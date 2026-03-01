@@ -11,6 +11,17 @@
 namespace converter {
 
 class PdfRenderer {
+private:
+#ifdef _WIN32
+    static constexpr const char* DEVNULL = "2>NUL";
+    static constexpr const char* AND_CMD = " & ";
+    static constexpr const char* RM_CMD  = "del /f /q ";
+#else
+    static constexpr const char* DEVNULL = "2>/dev/null";
+    static constexpr const char* AND_CMD = " && ";
+    static constexpr const char* RM_CMD  = "rm -f ";
+#endif
+
 public:
     static ConversionResult convert(const ConversionJob& job) {
         auto start = std::chrono::steady_clock::now();
@@ -37,7 +48,7 @@ public:
             " -r 150" +                               // 150 DPI — good balance of quality/size
             " \"" + job.inputPath.string() + "\"" +
             " \"" + pagePrefix.string() + "\"" +
-            " 2>/dev/null";
+            " " + DEVNULL;
 
         int ret = std::system(cmd.c_str());
         if (ret != 0) {
