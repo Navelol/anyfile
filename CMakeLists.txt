@@ -4,6 +4,7 @@ project(converter VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # for clangd
+set(CMAKE_AUTOMOC ON)
 
 # ── Output directories ────────────────────────────────────────────────────────
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -41,6 +42,7 @@ add_subdirectory(thirdparty/nlohmann-json)
 # ── Subdirectories ────────────────────────────────────────────────────────────
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
+add_subdirectory(src/gui)
 
 # GUI — optional, requires Qt6
 option(BUILD_GUI "Build the Qt6 GUI frontend" OFF)

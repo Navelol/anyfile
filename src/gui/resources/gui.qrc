@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/qml">
+        <file alias="Main.qml">qml/Main.qml</file>
+        <file alias="HeaderBar.qml">qml/HeaderBar.qml</file>
+        <file alias="HeaderButton.qml">qml/HeaderButton.qml</file>
+        <file alias="FormatBrowser.qml">qml/FormatBrowser.qml</file>
+        <file alias="FilePanel.qml">qml/FilePanel.qml</file>
+        <file alias="DropZone.qml">qml/DropZone.qml</file>
+        <file alias="OutputZone.qml">qml/OutputZone.qml</file>
+        <file alias="AdvancedPanel.qml">qml/AdvancedPanel.qml</file>
+        <file alias="ResultPanel.qml">qml/ResultPanel.qml</file>
+        <file alias="ProgressBar2.qml">qml/ProgressBar2.qml</file>
+    </qresource>
+</RCC>
