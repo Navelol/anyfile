@@ -40,6 +40,17 @@ sudo apt install \
 
 > For GUI support also install: `sudo apt install qt6-base-dev qt6-declarative-dev`
 
+### Arch / CachyOS (pacman)
+```bash
+sudo pacman -S --needed \
+    cmake ninja base-devel \
+    ffmpeg \
+    assimp \
+    libarchive
+```
+
+> For GUI support also install: `sudo pacman -S qt6-base qt6-declarative`
+
 ### Windows (vcpkg)
 ```bash
 vcpkg install ffmpeg assimp
