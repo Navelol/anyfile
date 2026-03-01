@@ -19,3 +19,9 @@ compile_commands.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Test files
+tests/audio/
+tests/video/
+tests/images/
+tests/models/
