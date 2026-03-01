@@ -4,6 +4,7 @@
 #include "FormatRegistry.h"
 #include "MediaConverter.h"
 #include "ModelConverter.h"
+#include "DataConverter.h"
 
 namespace converter {
 
@@ -39,7 +40,8 @@ public:
         }
 
         // Ensure output directory exists
-        fs::create_directories(job.outputPath.parent_path());
+        auto outDir = job.outputPath.parent_path();
+        if (!outDir.empty()) fs::create_directories(outDir);
 
         // Route to the right converter
         return route(job);
@@ -77,8 +79,7 @@ private:
 
         // ── Data formats (JSON, XML, YAML, CSV) ───────────────────────────
         if (inCat == Category::Data && outCat == Category::Data) {
-            // TODO: implement DataConverter
-            return ConversionResult::err("Data conversion not yet implemented");
+                return DataConverter::convert(job);
         }
 
         // ── Archives ──────────────────────────────────────────────────────

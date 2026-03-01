@@ -33,6 +33,7 @@ pkg_check_modules(SWRESAMPLE REQUIRED libswresample)
 find_package(assimp REQUIRED)
 
 # ── Subdirectories ────────────────────────────────────────────────────────────
+add_subdirectory(thirdparty/nlohmann-json)
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
 
@@ -50,5 +51,6 @@ message(STATUS "│  Build type   : ${CMAKE_BUILD_TYPE}")
 message(STATUS "│  Build GUI    : ${BUILD_GUI}")
 message(STATUS "│  FFmpeg       : ${AVCODEC_VERSION}")
 message(STATUS "│  Assimp       : ${assimp_VERSION}")
+message(STATUS "│  nlohmann-json: submodule             │")
 message(STATUS "└──────────────────────────────────────────┘")
 message(STATUS "")

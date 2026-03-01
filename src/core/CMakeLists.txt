@@ -18,4 +18,5 @@ target_link_libraries(converter_core PUBLIC
     ${SWSCALE_LIBRARIES}
     ${SWRESAMPLE_LIBRARIES}
     assimp::assimp
+    nlohmann_json::nlohmann_json
 )
