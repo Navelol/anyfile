@@ -16,6 +16,7 @@ Rectangle {
     color: root.surface
     border.color: enabled ? root.border : root.border
     border.width: 1
+    radius: 8
     opacity: enabled ? 1.0 : 0.4
 
     // Label tag
@@ -33,7 +34,7 @@ Rectangle {
             text: "OUTPUT"
             font.pixelSize: 9
             font.bold: true
-            font.family: "monospace"
+            font.family: root.appFont
             font.letterSpacing: 2
             color: root.textDim
         }
@@ -54,7 +55,7 @@ Rectangle {
                 anchors.centerIn: parent
                 text: "Select an input file first"
                 font.pixelSize: 12
-                font.family: "monospace"
+                font.family: root.appFont
                 color: root.textDim
             }
 
@@ -75,6 +76,7 @@ Rectangle {
                             id: chip
                             width: chipText.implicitWidth + 16
                             height: 30
+                            radius: 8
                             color: zone.selectedFormat === modelData
                                    ? root.accent
                                    : (chipMa.containsMouse ? root.surfaceHi : root.surface)
@@ -88,7 +90,7 @@ Rectangle {
                                 anchors.centerIn: parent
                                 text: "." + modelData
                                 font.pixelSize: 12
-                                font.family: "monospace"
+                                font.family: root.appFont
                                 font.bold: zone.selectedFormat === modelData
                                 color: zone.selectedFormat === modelData ? "#0e0e0f" : root.textMid
                             }
@@ -116,7 +118,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text: zone.outputPath
                 font.pixelSize: 10
-                font.family: "monospace"
+                font.family: root.appFont
                 color: root.textDim
                 elide: Text.ElideLeft
             }
@@ -127,6 +129,7 @@ Rectangle {
                 color: browseMa.containsMouse ? root.surfaceHi : "transparent"
                 border.color: root.border
                 border.width: 1
+                radius: 6
 
                 Text {
                     anchors.centerIn: parent
@@ -150,7 +153,7 @@ Rectangle {
             visible: zone.enabled && zone.formats.length === 0
             text: "No conversion targets available"
             font.pixelSize: 12
-            font.family: "monospace"
+            font.family: root.appFont
             color: root.warnClr
         }
     }

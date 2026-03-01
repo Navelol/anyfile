@@ -15,4 +15,7 @@
         <file alias="app.png">icons/app.png</file>
         <file alias="emblem.png">icons/emblem.png</file>
     </qresource>
+    <qresource prefix="/fonts">
+        <file alias="Manrope-Regular.ttf">fonts/Manrope-Regular.ttf</file>
+    </qresource>
 </RCC>

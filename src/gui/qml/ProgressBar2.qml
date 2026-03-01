@@ -49,14 +49,14 @@ Item {
                 text: Math.round(bar.value * 100) + "%"
                 font.pixelSize: 11
                 font.bold: true
-                font.family: "monospace"
+                font.family: root.appFont
                 color: root.accent
             }
 
             Text {
                 text: bar.message
                 font.pixelSize: 11
-                font.family: "monospace"
+                font.family: root.appFont
                 color: root.textDim
             }
         }

@@ -2,100 +2,194 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+// Overlay panel — positioned from parent (Main.qml anchors it below header)
 Rectangle {
-    id: sidebar
-    color: root.surface
+    id: panel
+
+    property var  _groups:   bridge.allFormatsGrouped()
+    property int  _sel:      -1   // -1 = show category grid
+
+    // Height grows to fit content
+    implicitHeight: inner.implicitHeight + 32
+    radius: 12
+    color: root.surfaceHi
+    border.color: root.border
+    border.width: 1
     clip: true
 
+    // Subtle drop shadow underneath
     Rectangle {
-        anchors.right: parent.right
-        width: 1
-        height: parent.height
-        color: root.border
+        anchors.fill: parent
+        anchors.margins: -1
+        z: -1
+        radius: parent.radius + 1
+        color: "transparent"
+        border.color: Qt.rgba(0, 0, 0, 0.5)
+        border.width: 6
     }
 
     ColumnLayout {
-        anchors.fill: parent
-        spacing: 0
+        id: inner
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: 16
+        spacing: 12
 
-        Item { height: 16 }
+        // ── Top bar ───────────────────────────────────────────────────────────
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
 
-        Text {
-            Layout.leftMargin: 16
-            text: "FORMATS"
-            font.pixelSize: 10
-            font.bold: true
-            font.family: "monospace"
-            font.letterSpacing: 2
-            color: root.textDim
+            // Back button (detail view only)
+            Rectangle {
+                visible: panel._sel >= 0
+                width: 28; height: 28; radius: 8
+                color: bkMa.containsMouse ? root.border : root.surface
+                Behavior on color { ColorAnimation { duration: 100 } }
+                Text { anchors.centerIn: parent; text: "←"; font.pixelSize: 13; color: root.textPrim; font.family: root.appFont }
+                MouseArea { id: bkMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: panel._sel = -1 }
+            }
+
+            Text {
+                text: panel._sel < 0
+                      ? "formats"
+                      : panel._groups[panel._sel].name.toLowerCase() + "  ·  click any extension to copy path"
+                font.pixelSize: 11
+                font.bold: true
+                font.family: root.appFont
+                font.letterSpacing: 0.5
+                color: root.textDim
+            }
+
+            Item { Layout.fillWidth: true }
+
+            // Close button
+            Rectangle {
+                width: 28; height: 28; radius: 8
+                color: closeMa.containsMouse ? root.border : root.surface
+                Behavior on color { ColorAnimation { duration: 100 } }
+                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 11; color: root.textDim; font.family: root.appFont }
+                MouseArea { id: closeMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: header.showFormats = false }
+            }
         }
 
-        Item { height: 12 }
+        Rectangle { Layout.fillWidth: true; height: 1; color: root.border }
 
-        ListView {
-            id: groupList
+        // ── Category grid ─────────────────────────────────────────────────────
+        Flow {
+            visible: panel._sel < 0
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            model: bridge.allFormatsGrouped()
-            spacing: 0
+            spacing: 8
 
-            delegate: Column {
-                width: parent ? parent.width : 0
-                spacing: 0
+            Repeater {
+                model: panel._groups
+                delegate: Rectangle {
+                    id: catCard
+                    width: catRow.implicitWidth + 24
+                    height: 38
+                    radius: 10
+                    color: catMa.containsMouse ? root.border : root.surface
+                    border.color: root.border
+                    border.width: 1
+                    Behavior on color { ColorAnimation { duration: 100 } }
 
-                // Group header
-                Item {
-                    width: parent.width
-                    height: 30
                     Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        spacing: 8
+                        id: catRow
+                        anchors.centerIn: parent
+                        spacing: 7
+                        Text { text: modelData.icon; font.pixelSize: 15 }
                         Text {
-                            text: modelData.icon
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.name.toLowerCase()
                             font.pixelSize: 13
-                        }
-                        Text {
-                            text: modelData.name
-                            font.pixelSize: 12
-                            font.bold: true
-                            font.family: "monospace"
-                            color: root.textMid
+                            font.family: root.appFont
+                            color: root.textPrim
                         }
                     }
+                    MouseArea {
+                        id: catMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: panel._sel = index
+                    }
                 }
+            }
+        }
 
-                // Ext tags
-                Flow {
-                    width: parent.width - 16
-                    anchors.left: parent.left
-                    anchors.leftMargin: 16
-                    spacing: 4
+        // ── Detail view ───────────────────────────────────────────────────────
+        ScrollView {
+            visible: panel._sel >= 0
+            Layout.fillWidth: true
+            implicitHeight: Math.min(detailCol.implicitHeight, 340)
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            clip: true
 
-                    Repeater {
-                        model: modelData.exts
+            Column {
+                id: detailCol
+                width: inner.width - 2
+                spacing: 10
+
+                Repeater {
+                    model: panel._sel >= 0 ? panel._groups[panel._sel].exts : []
+                    delegate: RowLayout {
+                        property string srcExt: modelData
+                        width: parent.width
+                        spacing: 8
+
+                        // Source ext badge
                         Rectangle {
-                            width: extText.implicitWidth + 10
-                            height: 20
-                            color: root.surfaceHi
-                            radius: 2
-
+                            width: srcLbl.implicitWidth + 16
+                            height: 26
+                            radius: 7
+                            color: root.accent
                             Text {
-                                id: extText
+                                id: srcLbl
                                 anchors.centerIn: parent
-                                text: "." + modelData
-                                font.pixelSize: 10
-                                font.family: "monospace"
-                                color: root.textDim
+                                text: "." + srcExt
+                                font.pixelSize: 11
+                                font.bold: true
+                                font.family: root.appFont
+                                color: "#0e0e0f"
+                            }
+                        }
+
+                        Text { text: "→"; font.pixelSize: 13; color: root.textDim; font.family: root.appFont }
+
+                        // Target chips
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 5
+
+                            Repeater {
+                                model: bridge.formatsFor("file." + srcExt)
+                                delegate: Rectangle {
+                                    width: tgtLbl.implicitWidth + 14
+                                    height: 24
+                                    radius: 7
+                                    color: root.surface
+                                    border.color: root.border
+                                    border.width: 1
+                                    Text {
+                                        id: tgtLbl
+                                        anchors.centerIn: parent
+                                        text: "." + modelData
+                                        font.pixelSize: 10
+                                        font.family: root.appFont
+                                        color: root.textMid
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                Item { height: 10 }
+                Item { height: 4 }
             }
         }
+
+        Item { height: 4 }
     }
 }

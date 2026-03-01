@@ -84,14 +84,14 @@ Item {
                     text: panel.isSuccess ? "Conversion complete" : "Conversion failed"
                     font.pixelSize: 13
                     font.bold: true
-                    font.family: "monospace"
+                    font.family: root.appFont
                     color: panel.isSuccess ? root.success : root.errorClr
                 }
 
                 Text {
                     text: panel.outPath
                     font.pixelSize: 11
-                    font.family: "monospace"
+                    font.family: root.appFont
                     color: root.textMid
                     width: content.width - 32 - 28 - 12
                     elide: Text.ElideLeft
@@ -104,7 +104,7 @@ Item {
             visible: panel.isSuccess && panel.statsText !== ""
             text: panel.statsText
             font.pixelSize: 11
-            font.family: "monospace"
+            font.family: root.appFont
             color: root.textDim
             leftPadding: 40
         }
@@ -119,7 +119,7 @@ Item {
                 Text {
                     text: modelData
                     font.pixelSize: 11
-                    font.family: "monospace"
+                    font.family: root.appFont
                     color: root.warnClr
                     wrapMode: Text.WordWrap
                     width: content.width - 32 - 40

@@ -23,6 +23,7 @@ qt_add_resources(anyfile_gui "gui_resources"
     FILES
         resources/icons/app.png
         resources/icons/emblem.png
+        resources/fonts/Manrope-Regular.ttf
 )
 
 # ── QML module ────────────────────────────────────────────────────────────────

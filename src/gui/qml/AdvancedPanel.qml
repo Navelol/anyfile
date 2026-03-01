@@ -49,7 +49,7 @@ Column {
                     text: "ADVANCED OPTIONS"
                     font.pixelSize: 9
                     font.bold: true
-                    font.family: "monospace"
+                    font.family: root.appFont
                     font.letterSpacing: 2
                     color: root.textDim
                 }
@@ -99,7 +99,7 @@ Column {
                     Text {
                         text: modelData.label
                         font.pixelSize: 10
-                        font.family: "monospace"
+                        font.family: root.appFont
                         color: root.textDim
                         font.letterSpacing: 0.5
                     }
@@ -110,13 +110,14 @@ Column {
                         color: root.surfaceHi
                         border.color: fieldInput.activeFocus ? root.accent : root.border
                         border.width: 1
+                        radius: 7
 
                         TextInput {
                             id: fieldInput
                             anchors.fill: parent
                             anchors.margins: 6
                             font.pixelSize: 12
-                            font.family: "monospace"
+                            font.family: root.appFont
                             color: root.textPrim
                             onTextChanged: adv[modelData.prop] = text
 

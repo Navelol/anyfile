@@ -97,7 +97,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "TO"
                     font.pixelSize: 9
-                    font.family: "monospace"
+                    font.family: root.appFont
                     font.letterSpacing: 2
                     color: root.textDim
                 }
@@ -142,6 +142,7 @@ Item {
                 anchors.left: parent.left
                 width: 200
                 height: parent.height
+                radius: 8
                 color: {
                     if (bridge.converting) return root.border
                     if (btnMa.containsMouse) return root.accentDim
@@ -151,10 +152,10 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: bridge.converting ? "CONVERTING..." : "CONVERT →"
+                    text: bridge.converting ? "converting..." : "convert →"
                     font.pixelSize: 13
                     font.bold: true
-                    font.family: "monospace"
+                    font.family: root.appFont
                     font.letterSpacing: 2
                     color: bridge.converting ? root.textDim : "#0e0e0f"
                 }
@@ -176,7 +177,7 @@ Item {
                 width: parent.width - convertBtn.width - 16
                 text: panel.outputFilePath
                 font.pixelSize: 11
-                font.family: "monospace"
+                font.family: root.appFont
                 color: root.textDim
                 elide: Text.ElideLeft
             }

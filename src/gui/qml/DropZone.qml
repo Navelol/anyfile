@@ -16,6 +16,7 @@ Rectangle {
     color: ma.containsMouse && !hasFile ? root.surfaceHi : root.surface
     border.color: hasFile ? root.accent : (ma.containsMouse ? root.textDim : root.border)
     border.width: hasFile ? 1 : 1
+    radius: 8
 
     Behavior on border.color { ColorAnimation { duration: 150 } }
 
@@ -35,7 +36,7 @@ Rectangle {
             text: zone.label
             font.pixelSize: 9
             font.bold: true
-            font.family: "monospace"
+            font.family: root.appFont
             font.letterSpacing: 2
             color: hasFile ? "#0e0e0f" : root.textDim
         }
@@ -56,7 +57,7 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             text: hasFile ? zone.fileName : zone.placeholderText
             font.pixelSize: hasFile ? 13 : 12
-            font.family: "monospace"
+            font.family: root.appFont
             color: hasFile ? root.textPrim : root.textDim
             width: zone.width - 32
             elide: Text.ElideMiddle
@@ -71,13 +72,14 @@ Rectangle {
             border.color: root.border
             width: fmtText.implicitWidth + 14
             height: 22
+            radius: 8
 
             Text {
                 id: fmtText
                 anchors.centerIn: parent
                 text: "." + zone.formatExt
                 font.pixelSize: 11
-                font.family: "monospace"
+                font.family: root.appFont
                 color: root.accent
             }
         }

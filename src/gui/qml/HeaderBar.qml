@@ -30,8 +30,8 @@ Item {
         // Emblem
         Image {
             source: "qrc:/icons/emblem.png"
-            width: 32
-            height: 32
+            width: 28
+            height: 28
             fillMode: Image.PreserveAspectFit
             smooth: true
         }
@@ -39,35 +39,20 @@ Item {
         Item { width: 10 }
 
         // Logo / wordmark
-        Row {
-            spacing: 0
-            Text {
-                text: "ANYFILE"
-                font.pixelSize: 18
-                font.bold: true
-                font.letterSpacing: 3
-                color: root.textPrim
-                font.family: "monospace"
-            }
-            Text {
-                text: "_"
-                font.pixelSize: 18
-                font.bold: true
-                color: root.accent
-                font.family: "monospace"
-                SequentialAnimation on opacity {
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0; duration: 500 }
-                    NumberAnimation { to: 1; duration: 500 }
-                }
-            }
+        Text {
+            text: "anyfile"
+            font.pixelSize: 18
+            font.bold: true
+            font.letterSpacing: 1
+            color: root.textPrim
+            font.family: root.appFont
         }
 
         Item { Layout.fillWidth: true }
 
         // Formats toggle
         HeaderButton {
-            text: "FORMATS"
+            text: "formats"
             active: header.showFormats
             onClicked: header.showFormats = !header.showFormats
         }
@@ -89,58 +74,80 @@ Item {
         modal: true
         anchors.centerIn: Overlay.overlay
         width: 360
+        padding: 24
+        topPadding: 24
+        bottomPadding: 24
 
         background: Rectangle {
             color: root.surfaceHi
             border.color: root.border
             border.width: 1
+            radius: 12
         }
 
-        ColumnLayout {
-            width: parent.width
-            spacing: 16
+        contentItem: ColumnLayout {
+            spacing: 14
+            width: aboutDialog.width - 48
 
-            Text {
-                text: "ANYFILE_"
-                font.pixelSize: 22
-                font.bold: true
-                font.family: "monospace"
-                color: root.accent
-                font.letterSpacing: 2
+            Row {
+                spacing: 10
+                Image {
+                    source: "qrc:/icons/emblem.png"
+                    width: 28; height: 28
+                    fillMode: Image.PreserveAspectFit
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: "anyfile"
+                    font.pixelSize: 22
+                    font.bold: true
+                    font.family: root.appFont
+                    color: root.accent
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
             Text {
                 text: "Universal File Converter · v0.1"
                 font.pixelSize: 13
+                font.family: root.appFont
                 color: root.textMid
             }
-            Rectangle { height: 1; width: parent.width; color: root.border }
+            Rectangle { height: 1; Layout.fillWidth: true; color: root.border }
             Text {
                 wrapMode: Text.WordWrap
-                width: parent.width
+                Layout.fillWidth: true
                 text: "Converts images, video, audio, 3D models, documents, archives, ebooks and data formats.\n\nDrag & drop a file or use the file picker to get started."
                 font.pixelSize: 13
+                font.family: root.appFont
                 color: root.textDim
                 lineHeight: 1.5
             }
-            Button {
-                text: "CLOSE"
+            Item { height: 4 }
+            Rectangle {
                 Layout.alignment: Qt.AlignRight
-                onClicked: aboutDialog.close()
-                background: Rectangle {
-                    color: parent.pressed ? root.accentDim : root.accent
-                    radius: 0
-                }
-                contentItem: Text {
-                    text: parent.text
+                width: closeLabel.implicitWidth + 28
+                height: 34
+                radius: 8
+                color: closeBtnMa.containsMouse
+                       ? (closeBtnMa.pressed ? root.accentDim : Qt.lighter(root.accent, 1.08))
+                       : root.accent
+                Behavior on color { ColorAnimation { duration: 100 } }
+                Text {
+                    id: closeLabel
+                    anchors.centerIn: parent
+                    text: "close"
                     font.pixelSize: 12
                     font.bold: true
-                    font.family: "monospace"
+                    font.family: root.appFont
                     color: "#0e0e0f"
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
                 }
-                width: 80
-                height: 32
+                MouseArea {
+                    id: closeBtnMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: aboutDialog.close()
+                }
             }
         }
     }

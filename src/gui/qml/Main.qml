@@ -12,7 +12,7 @@ ApplicationWindow {
     height: 640
     minimumWidth: 700
     minimumHeight: 540
-    title: "ANYFILE_"
+    title: "anyfile"
 
     // ── Palette ───────────────────────────────────────────────────────────────
     readonly property color bg:        "#0e0e0f"
@@ -27,6 +27,12 @@ ApplicationWindow {
     readonly property color success:   "#4ade80"
     readonly property color errorClr:  "#ff5566"
     readonly property color warnClr:   "#fbbf24"
+
+    FontLoader {
+        id: manropeLoader
+        source: "qrc:/fonts/Manrope-Regular.ttf"
+    }
+    readonly property string appFont: manropeLoader.status === FontLoader.Ready ? manropeLoader.name : "sans-serif"
 
     background: Rectangle { color: root.bg }
 
@@ -64,7 +70,7 @@ ApplicationWindow {
         z: 100
         border.color: root.accent
         border.width: 2
-        radius: 0
+        radius: 12
 
         Column {
             anchors.centerIn: parent
@@ -79,7 +85,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Drop file to convert"
                 font.pixelSize: 18
-                font.family: "monospace"
+                font.family: root.appFont
                 color: root.textPrim
                 font.letterSpacing: 2
             }
@@ -99,43 +105,41 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            RowLayout {
+            // ── Format browser overlay (slides down from top) ─────────────────
+            FormatBrowser {
+                id: formatBrowser
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.margins: 12
+                z: 10
+                opacity: header.showFormats ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 180 } }
+            }
+
+            // ── Conversion panel ──────────────────────────────────────────────
+            ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 0
                 spacing: 0
 
-                // Left: format browser
-                FormatBrowser {
-                    id: formatBrowser
-                    Layout.preferredWidth: 200
-                    Layout.fillHeight: true
-                    visible: header.showFormats
-                }
-
-                // Right: conversion panel
-                ColumnLayout {
+                FilePanel {
+                    id: filePanel
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: 0
+                }
 
-                    FilePanel {
-                        id: filePanel
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                    }
+                ResultPanel {
+                    id: resultPanel
+                    Layout.fillWidth: true
+                }
 
-                    ResultPanel {
-                        id: resultPanel
-                        Layout.fillWidth: true
-                    }
-
-                    ProgressBar2 {
-                        id: progressBar
-                        Layout.fillWidth: true
-                        visible: bridge.converting
-                        value: bridge.progress
-                        message: bridge.progressMessage
-                    }
+                ProgressBar2 {
+                    id: progressBar
+                    Layout.fillWidth: true
+                    visible: bridge.converting
+                    value: bridge.progress
+                    message: bridge.progressMessage
                 }
             }
         }
