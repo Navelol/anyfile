@@ -81,7 +81,7 @@ ApplicationWindow {
                 font.pixelSize: 18
                 font.family: "monospace"
                 color: root.textPrim
-                letterSpacing: 2
+                font.letterSpacing: 2
             }
         }
     }

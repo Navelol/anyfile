@@ -118,12 +118,11 @@ Column {
                             font.pixelSize: 12
                             font.family: "monospace"
                             color: root.textPrim
-                            placeholderText: modelData.hint
                             onTextChanged: adv[modelData.prop] = text
 
                             Text {
                                 anchors.fill: parent
-                                text: parent.placeholderText
+                                text: modelData.hint
                                 font: parent.font
                                 color: root.textDim
                                 visible: parent.text.length === 0 && !parent.activeFocus

@@ -95,7 +95,7 @@ Item {
                 font.bold: true
                 font.family: "monospace"
                 color: root.accent
-                letterSpacing: 2
+                font.letterSpacing: 2
             }
             Text {
                 text: "Universal File Converter · v0.1"
