@@ -22,6 +22,7 @@ qt_add_resources(anyfile_gui "gui_resources"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/resources"
     FILES
         resources/icons/app.png
+        resources/icons/emblem.png
 )
 
 # ── QML module ────────────────────────────────────────────────────────────────

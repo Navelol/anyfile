@@ -23,9 +23,20 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 20
+        anchors.leftMargin: 16
         anchors.rightMargin: 16
         spacing: 0
+
+        // Emblem
+        Image {
+            source: "qrc:/icons/emblem.png"
+            width: 32
+            height: 32
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+        }
+
+        Item { width: 10 }
 
         // Logo / wordmark
         Row {

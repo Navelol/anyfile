@@ -13,5 +13,6 @@
     </qresource>
     <qresource prefix="/icons">
         <file alias="app.png">icons/app.png</file>
+        <file alias="emblem.png">icons/emblem.png</file>
     </qresource>
 </RCC>
