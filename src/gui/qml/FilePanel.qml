@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import Qt.labs.platform as Platform
 
 Item {
     id: panel
@@ -43,18 +42,18 @@ Item {
     }
 
     // ── File pickers ──────────────────────────────────────────────────────────
-    Platform.FileDialog {
+    FileDialog {
         id: inputFilePicker
         title: "Select input file"
-        fileMode: Platform.FileDialog.OpenFile
-        onAccepted: panel.setInputFile(bridge.urlToPath(file.toString()))
+        fileMode: FileDialog.OpenFile
+        onAccepted: panel.setInputFile(bridge.urlToPath(selectedFile.toString()))
     }
 
-    Platform.FileDialog {
+    FileDialog {
         id: outputFilePicker
         title: "Save output file as"
-        fileMode: Platform.FileDialog.SaveFile
-        onAccepted: panel.outputFilePath = bridge.urlToPath(file.toString())
+        fileMode: FileDialog.SaveFile
+        onAccepted: panel.outputFilePath = bridge.urlToPath(selectedFile.toString())
     }
 
     // ── Layout ────────────────────────────────────────────────────────────────

@@ -19,8 +19,8 @@ ApplicationWindow {
     readonly property color surface:   "#161618"
     readonly property color surfaceHi: "#1e1e21"
     readonly property color border:    "#2a2a2e"
-    readonly property color accent:    "#e8ff5a"      // neon lime
-    readonly property color accentDim: "#b0c43a"
+    readonly property color accent:    "#fed150"
+    readonly property color accentDim: "#c9a53e"
     readonly property color textPrim:  "#f0f0f0"
     readonly property color textDim:   "#6b6b78"
     readonly property color textMid:   "#9999a8"
