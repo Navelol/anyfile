@@ -32,8 +32,13 @@ pkg_check_modules(SWRESAMPLE REQUIRED libswresample)
 # Assimp
 find_package(assimp REQUIRED)
 
-# ── Subdirectories ────────────────────────────────────────────────────────────
+# libarchive
+find_package(LibArchive REQUIRED)
+
+# nlohmann-json (header-only, via submodule)
 add_subdirectory(thirdparty/nlohmann-json)
+
+# ── Subdirectories ────────────────────────────────────────────────────────────
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
 

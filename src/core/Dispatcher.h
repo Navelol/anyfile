@@ -5,6 +5,7 @@
 #include "MediaConverter.h"
 #include "ModelConverter.h"
 #include "DataConverter.h"
+#include "ArchiveConverter.h"
 
 namespace converter {
 
@@ -84,8 +85,7 @@ private:
 
         // ── Archives ──────────────────────────────────────────────────────
         if (inCat == Category::Archive || outCat == Category::Archive) {
-            // TODO: implement ArchiveConverter using libarchive
-            return ConversionResult::err("Archive conversion not yet implemented");
+            return ArchiveConverter::convert(job);
         }
 
         return ConversionResult::err(

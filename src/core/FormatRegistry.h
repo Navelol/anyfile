@@ -107,6 +107,11 @@ private:
         reg("7z",   Category::Archive, "application/x-7z-compressed");
         reg("rar",  Category::Archive, "application/x-rar-compressed");
         reg("zst",  Category::Archive, "application/zstd");
+        reg("tgz",  Category::Archive, "application/x-tar");
+        reg("tbz2", Category::Archive, "application/x-bzip2");
+        reg("txz",  Category::Archive, "application/x-xz");
+        reg("lz4",  Category::Archive, "application/x-lz4");
+        reg("lzma", Category::Archive, "application/x-lzma");
 
         // ── Data ──────────────────────────────────────────────────────────────
         reg("json", Category::Data, "application/json");
@@ -169,11 +174,19 @@ private:
         targets("toml", {"json","yaml"});
 
         // Archives
-        targets("zip",  {"tar","gz","7z"});
-        targets("tar",  {"zip","gz","bz2","xz","zst"});
-        targets("gz",   {"zip","tar","bz2","xz","zst"});
-        targets("7z",   {"zip","tar","gz"});
-        targets("rar",  {"zip","tar","gz","7z"});
+        targets("zip",  {"tar","gz","bz2","xz","7z","zst","tgz","tbz2","txz","lz4","lzma"});
+        targets("tar",  {"zip","gz","bz2","xz","zst","tgz","tbz2","txz","lz4","lzma"});
+        targets("gz",   {"zip","tar","bz2","xz","zst","tgz","lz4","lzma"});
+        targets("bz2",  {"zip","tar","gz","xz","zst","tbz2","lz4"});
+        targets("xz",   {"zip","tar","gz","bz2","zst","txz","lzma"});
+        targets("zst",  {"zip","tar","gz","bz2","xz","lz4"});
+        targets("7z",   {"zip","tar","gz","bz2","xz","lz4"});
+        targets("rar",  {"zip","tar","gz","7z","bz2","xz"});
+        targets("tgz",  {"zip","tar","gz","bz2","xz","7z"});
+        targets("tbz2", {"zip","tar","gz","bz2","xz","7z"});
+        targets("txz",  {"zip","tar","gz","bz2","xz","7z"});
+        targets("lz4",  {"zip","tar","gz","bz2","xz","zst"});
+        targets("lzma", {"zip","tar","gz","xz","zst"});
     }
 
     void reg(const std::string& ext, Category cat, const std::string& mime) {
