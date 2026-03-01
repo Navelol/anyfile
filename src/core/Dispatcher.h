@@ -5,7 +5,9 @@
 #include "MediaConverter.h"
 #include "ModelConverter.h"
 #include "DataConverter.h"
+#include "DocumentConverter.h"
 #include "ArchiveConverter.h"
+
 
 namespace converter {
 
@@ -78,6 +80,12 @@ private:
             return MediaConverter::convert(job);
         }
 
+        // ── Cross-category: spreadsheet ↔ data ───────────────────────────────────
+        if ((inCat == Category::Data && (outCat == Category::Document)) ||
+            (inCat == Category::Document && outCat == Category::Data)) {
+            return DocumentConverter::convert(job);
+        }
+
         // ── Data formats (JSON, XML, YAML, CSV) ───────────────────────────
         if (inCat == Category::Data && outCat == Category::Data) {
                 return DataConverter::convert(job);
@@ -86,6 +94,12 @@ private:
         // ── Archives ──────────────────────────────────────────────────────
         if (inCat == Category::Archive || outCat == Category::Archive) {
             return ArchiveConverter::convert(job);
+        }
+
+        // ── Documents & Ebooks ────────────────────────────────────────────────────
+        if (inCat == Category::Document || outCat == Category::Document ||
+            inCat == Category::Ebook    || outCat == Category::Ebook) {
+            return DocumentConverter::convert(job);
         }
 
         return ConversionResult::err(

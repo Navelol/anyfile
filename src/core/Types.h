@@ -17,6 +17,7 @@ enum class Category {
     Audio,
     Model3D,
     Document,
+    Ebook,
     Archive,
     Data,
     Unknown,

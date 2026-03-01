@@ -122,6 +122,33 @@ private:
         reg("tsv",  Category::Data, "text/tab-separated-values");
         reg("toml", Category::Data, "application/toml");
 
+        // ── Documents ─────────────────────────────────────────────────────────────
+        reg("pdf",  Category::Document, "application/pdf");
+        reg("docx", Category::Document, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        reg("doc",  Category::Document, "application/msword");
+        reg("odt",  Category::Document, "application/vnd.oasis.opendocument.text");
+        reg("rtf",  Category::Document, "application/rtf");
+        reg("xlsx", Category::Document, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        reg("xls",  Category::Document, "application/vnd.ms-excel");
+        reg("ods",  Category::Document, "application/vnd.oasis.opendocument.spreadsheet");
+        reg("pptx", Category::Document, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+        reg("ppt",  Category::Document, "application/vnd.ms-powerpoint");
+        reg("odp",  Category::Document, "application/vnd.oasis.opendocument.presentation");
+        reg("txt",  Category::Document, "text/plain");
+        reg("html", Category::Document, "text/html");
+        reg("htm",  Category::Document, "text/html");
+        reg("md",       Category::Document, "text/markdown");
+        reg("markdown", Category::Document, "text/markdown");
+        reg("rst",      Category::Document, "text/x-rst");
+        reg("tex",      Category::Document, "application/x-tex");
+        reg("latex",    Category::Document, "application/x-latex");
+
+        // ── Ebooks ────────────────────────────────────────────────────────────────
+        reg("epub", Category::Ebook, "application/epub+zip");
+        reg("mobi", Category::Ebook, "application/x-mobipocket-ebook");
+        reg("azw3", Category::Ebook, "application/vnd.amazon.ebook");
+        reg("azw",  Category::Ebook, "application/vnd.amazon.ebook");
+
         // ── Conversion target map ─────────────────────────────────────────────
         // Images
         targets("png",  {"jpg","webp","bmp","tiff","gif","avif","tga"});
@@ -169,7 +196,7 @@ private:
         targets("xml",  {"json","yaml","csv"});
         targets("yaml", {"json","xml","csv","toml"});
         targets("yml",  {"json","xml","csv","toml"});
-        targets("csv",  {"json","xml","yaml","tsv"});
+        targets("csv",  {"json","xml","yaml","tsv","ods","xlsx","xls"});
         targets("tsv",  {"csv","json"});
         targets("toml", {"json","yaml"});
 
@@ -187,6 +214,33 @@ private:
         targets("txz",  {"zip","tar","gz","bz2","xz","7z"});
         targets("lz4",  {"zip","tar","gz","bz2","xz","zst"});
         targets("lzma", {"zip","tar","gz","xz","zst"});
+
+        // Documents
+        targets("docx", {"pdf","odt","rtf","txt","html","doc"});
+        targets("doc",  {"pdf","docx","odt","rtf","txt"});
+        targets("odt",  {"pdf","docx","doc","rtf","txt","html"});
+        targets("rtf",  {"pdf","docx","odt","txt"});
+        targets("pdf",  {"odt","txt","html"});
+        targets("xlsx", {"pdf","ods","csv","xls"});
+        targets("xls",  {"pdf","xlsx","ods","csv"});
+        targets("ods",  {"pdf","xlsx","xls","csv"});
+        targets("pptx", {"pdf","odp","ppt"});
+        targets("ppt",  {"pdf","pptx","odp"});
+        targets("odp",  {"pdf","pptx","ppt"});
+        targets("txt",  {"pdf","docx","odt","rtf","html"});
+        targets("html", {"pdf","docx","odt","rtf","txt"});
+        targets("htm",  {"pdf","docx","odt","rtf","txt"});
+        targets("md",       {"pdf","docx","odt","html","rst","tex","epub"});
+        targets("markdown", {"pdf","docx","odt","html","rst","tex","epub"});
+        targets("rst",      {"pdf","docx","html","md"});
+        targets("tex",      {"pdf","docx","html","md"});
+        targets("latex",    {"pdf","docx","html","md"});
+
+        // Ebooks
+        targets("epub", {"mobi","azw3","pdf"});
+        targets("mobi", {"epub","azw3","pdf"});
+        targets("azw3", {"epub","mobi","pdf"});
+        targets("azw",  {"epub","mobi","pdf"});
     }
 
     void reg(const std::string& ext, Category cat, const std::string& mime) {
