@@ -39,16 +39,16 @@ find_package(LibArchive REQUIRED)
 # nlohmann-json (header-only, via submodule)
 add_subdirectory(thirdparty/nlohmann-json)
 
+# GUI — optional, requires Qt6
+option(BUILD_GUI "Build the Qt6 GUI frontend" OFF)
+
 # ── Subdirectories ────────────────────────────────────────────────────────────
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
-add_subdirectory(src/gui)
 
-# GUI — optional, requires Qt6
-option(BUILD_GUI "Build the Qt6 GUI frontend" OFF)
 if(BUILD_GUI)
-    find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
-    add_subdirectory(gui)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Qml)
+    add_subdirectory(src/gui)
 endif()
 
 message(STATUS "")

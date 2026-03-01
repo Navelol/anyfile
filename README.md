@@ -31,11 +31,14 @@ converter/
 ### Linux (apt)
 ```bash
 sudo apt install \
-    cmake ninja-build \
+    cmake ninja-build build-essential \
     libavcodec-dev libavformat-dev libavutil-dev \
     libswscale-dev libswresample-dev \
-    libassimp-dev
+    libassimp-dev \
+    libarchive-dev
 ```
+
+> For GUI support also install: `sudo apt install qt6-base-dev qt6-declarative-dev`
 
 ### Windows (vcpkg)
 ```bash
@@ -49,8 +52,12 @@ vcpkg install ffmpeg assimp
 ### Linux
 ```bash
 chmod +x scripts/build_linux.sh
-./scripts/build_linux.sh
+./scripts/build_linux.sh              # CLI only (default)
+./scripts/build_linux.sh --gui        # CLI + Qt6 GUI
+./scripts/build_linux.sh --debug      # debug build
 ```
+
+Binary is output to `build/linux/bin/anyfile`.
 
 ### Windows
 ```bat
@@ -59,7 +66,9 @@ scripts\build_windows.bat
 
 ### With GUI (Qt6 required)
 ```bash
-cmake .. -DBUILD_GUI=ON
+./scripts/build_linux.sh --gui
+# or manually:
+cmake -S . -B build/linux -DBUILD_GUI=ON && cmake --build build/linux --parallel
 ```
 
 ---
