@@ -16,6 +16,14 @@ qt_add_executable(anyfile_gui
     main_gui.cpp
 )
 
+# ── Embed icons and other static resources ───────────────────────────────────
+qt_add_resources(anyfile_gui "gui_resources"
+    PREFIX "/"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+    FILES
+        resources/icons/app.png
+)
+
 # ── QML module ────────────────────────────────────────────────────────────────
 qt_add_qml_module(anyfile_gui
     URI Anyfile

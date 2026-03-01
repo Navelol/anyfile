@@ -11,4 +11,7 @@
         <file alias="ResultPanel.qml">qml/ResultPanel.qml</file>
         <file alias="ProgressBar2.qml">qml/ProgressBar2.qml</file>
     </qresource>
+    <qresource prefix="/icons">
+        <file alias="app.png">icons/app.png</file>
+    </qresource>
 </RCC>
