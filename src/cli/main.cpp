@@ -8,6 +8,7 @@
 
 #include "../core/Dispatcher.h"
 #include "../core/FormatRegistry.h"
+#include "ArgParser.h"
 
 namespace fs = std::filesystem;
 using namespace converter;
@@ -34,8 +35,8 @@ using namespace converter;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 static std::string humanSize(size_t bytes) {
     if (bytes < 1024)       return std::to_string(bytes) + " B";
-    if (bytes < 1024*1024)  return std::to_string(bytes/1024) + " KB";
-    return std::to_string(bytes/(1024*1024)) + " MB";
+    if (bytes < 1024*1024)  return std::to_string(bytes / 1024) + " KB";
+    return std::to_string(bytes / (1024 * 1024)) + " MB";
 }
 
 static void printBanner() {
@@ -50,31 +51,35 @@ static void printBanner() {
 static void printUsage() {
     std::cout
         << "  " COL_BOLD "Usage:" COL_RESET "\n"
-        << "    anyfile <input> <output> [options]\n"
-        << "    anyfile <input> --to <ext> [options]\n"
+        << "    anyfile <input> <output>           Single file, explicit output\n"
+        << "    anyfile <input> <ext>              Single file, auto-named output\n"
+        << "    anyfile <dir> <ext> [output_dir]   Batch convert directory\n"
+        << "    anyfile <dir> <map> [output_dir]   Batch with format map\n"
         << "    anyfile --formats\n"
         << "    anyfile --help\n\n"
         << "  " COL_BOLD "Examples:" COL_RESET "\n"
-        << "    anyfile video.mp4 audio.mp3\n"
-        << "    anyfile model.fbx model.glb\n"
-        << "    anyfile image.png --to webp\n"
-        << "    anyfile video.mov output.mp4 --video-codec libx265 --crf 18\n"
-        << "    anyfile video.mp4 output.mp4 --resolution 1280x720 --framerate 30\n"
-        << "    anyfile audio.wav output.mp3 --audio-bitrate 320k\n\n"
+        << "    anyfile video.avi mp4\n"
+        << "    anyfile video.avi output.mp4\n"
+        << "    anyfile ./videos mp4\n"
+        << "    anyfile ./videos mp4 ./output\n"
+        << "    anyfile ./videos mp4:mp3,avi:mp4\n"
+        << "    anyfile ./videos mp4 -r\n"
+        << "    anyfile video.mov output.mp4 --video-codec libx265 --crf 18\n\n"
+        << "  " COL_BOLD "Batch options:" COL_RESET "\n"
+        << "    -r, --recursive         Recurse into subdirectories\n"
+        << "    --f, --force            Overwrite existing output files\n\n"
         << "  " COL_BOLD "Media options:" COL_RESET "\n"
-        << "    --video-codec  <codec>    e.g. libx264, libx265, vp9, mpeg4\n"
-        << "    --audio-codec  <codec>    e.g. aac, libmp3lame, libopus, flac\n"
-        << "    --video-bitrate <rate>    e.g. 2M, 500k\n"
-        << "    --audio-bitrate <rate>    e.g. 192k, 320k\n"
-        << "    --resolution   <WxH>      e.g. 1920x1080, 1280x720\n"
-        << "    --framerate    <fps>      e.g. 24, 30, 60\n"
-        << "    --crf          <n>        Quality: 0 (best) – 51 (worst), default 23\n"
-        << "    --pixel-format <fmt>      e.g. yuv420p, yuv444p\n\n";
+        << "    --video-codec  <codec>  e.g. libx264, libx265, hevc_nvenc\n"
+        << "    --audio-codec  <codec>  e.g. aac, libmp3lame, libopus\n"
+        << "    --video-bitrate <rate>  e.g. 2M, 500k\n"
+        << "    --audio-bitrate <rate>  e.g. 192k, 320k\n"
+        << "    --resolution   <WxH>   e.g. 1920x1080, 1280x720\n"
+        << "    --framerate    <fps>   e.g. 24, 30, 60\n"
+        << "    --crf          <n>     Quality: 0 (best) – 51 (worst)\n"
+        << "    --pixel-format <fmt>   e.g. yuv420p, yuv444p\n\n";
 }
 
 static void printFormats() {
-    auto& reg = FormatRegistry::instance();
-
     struct Group { std::string name; std::vector<std::string> exts; };
     std::vector<Group> groups = {
         { "Images",    {"png","jpg","webp","bmp","tiff","gif","heic","avif","exr","tga","svg"} },
@@ -97,11 +102,9 @@ static void printFormats() {
     std::cout << "\n";
 }
 
-// Simple inline progress bar for the terminal
 static void printProgress(float progress, const std::string& msg) {
     const int barWidth = 30;
     int filled = (int)(progress * barWidth);
-
     std::cout << "\r  [";
     for (int i = 0; i < barWidth; i++)
         std::cout << (i < filled ? "█" : "░");
@@ -112,109 +115,72 @@ static void printProgress(float progress, const std::string& msg) {
               << std::flush;
 }
 
-// ── Argument parsing helpers ──────────────────────────────────────────────────
-
-// Returns the value for a named flag, or std::nullopt if not found.
-// Handles both "--flag value" and advances i past the value.
-static std::optional<std::string> consumeFlag(
-    const std::vector<std::string>& args, size_t& i, const std::string& flag)
-{
-    if (args[i] == flag && i + 1 < args.size()) {
-        ++i;
-        return args[i];
-    }
-    return std::nullopt;
+// ── Apply parsed encoding overrides to a job ──────────────────────────────────
+static void applyOverrides(ConversionJob& job, const ParsedArgs& args) {
+    job.videoCodec   = args.videoCodec;
+    job.audioCodec   = args.audioCodec;
+    job.videoBitrate = args.videoBitrate;
+    job.audioBitrate = args.audioBitrate;
+    job.resolution   = args.resolution;
+    job.framerate    = args.framerate;
+    job.crf          = args.crf;
+    job.pixelFormat  = args.pixelFormat;
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-int main(int argc, char* argv[]) {
-    printBanner();
+// ── Print encoding overrides if any are active ────────────────────────────────
+static void printOverrides(const ParsedArgs& args) {
+    if (args.videoCodec  ) std::cout << "  " << COL_DIM << "Video codec   : " << COL_RESET << *args.videoCodec   << "\n";
+    if (args.audioCodec  ) std::cout << "  " << COL_DIM << "Audio codec   : " << COL_RESET << *args.audioCodec   << "\n";
+    if (args.videoBitrate) std::cout << "  " << COL_DIM << "Video bitrate : " << COL_RESET << *args.videoBitrate << "\n";
+    if (args.audioBitrate) std::cout << "  " << COL_DIM << "Audio bitrate : " << COL_RESET << *args.audioBitrate << "\n";
+    if (args.resolution  ) std::cout << "  " << COL_DIM << "Resolution    : " << COL_RESET << *args.resolution   << "\n";
+    if (args.framerate   ) std::cout << "  " << COL_DIM << "Framerate     : " << COL_RESET << *args.framerate    << "\n";
+    if (args.crf         ) std::cout << "  " << COL_DIM << "CRF           : " << COL_RESET << *args.crf          << "\n";
+    if (args.pixelFormat ) std::cout << "  " << COL_DIM << "Pixel format  : " << COL_RESET << *args.pixelFormat  << "\n";
+}
 
-    if (argc < 2) {
-        printUsage();
-        return 0;
+// ── Check for output conflict, returns true if safe to proceed ────────────────
+static bool checkConflict(const fs::path& outputPath, bool force) {
+    if (!fs::exists(outputPath)) return true;
+    if (force) return true;
+
+    std::cout << "  " << COL_YELLOW << "⚠ Warning: " << COL_RESET
+              << "'" << outputPath.filename().string() << "' already exists. "
+              << "Use " COL_BOLD "--f" COL_RESET " to overwrite.\n";
+    return false;
+}
+
+// ── Determine output extension for a file in batch mode ──────────────────────
+static std::string resolveTargetExt(const fs::path& file, const ParsedArgs& args) {
+    std::string inExt = file.extension().string();
+    if (!inExt.empty() && inExt[0] == '.') inExt = inExt.substr(1);
+    for (auto& c : inExt) c = std::tolower(c);
+
+    if (!args.formatMap.empty()) {
+        auto it = args.formatMap.find(inExt);
+        if (it == args.formatMap.end()) return "";  // not in map — skip
+        return it->second;
     }
 
-    std::vector<std::string> args(argv + 1, argv + argc);
-    size_t i = 0;
+    return args.targetExt;
+}
 
-    std::string arg1 = args[i++];
-
-    // Flags
-    if (arg1 == "--help" || arg1 == "-h") { printUsage();   return 0; }
-    if (arg1 == "--formats")              { printFormats(); return 0; }
-
-    if (i >= args.size()) {
-        std::cerr << COL_RED << "  Error: " << COL_RESET
-                  << "Expected output file or --to <ext>\n\n";
-        printUsage();
-        return 1;
-    }
-
-    fs::path inputPath  = arg1;
-    fs::path outputPath;
-
-    std::string arg2 = args[i++];
-    if (arg2 == "--to" || arg2 == "-t") {
-        if (i >= args.size()) {
-            std::cerr << COL_RED << "  Error: " << COL_RESET << "--to requires an extension\n";
-            return 1;
-        }
-        std::string ext = args[i++];
-        if (ext[0] == '.') ext = ext.substr(1);
-        outputPath = inputPath.stem().string() + "." + ext;
-    } else {
-        outputPath = arg2;
-    }
-
-    // ── Parse optional media flags ────────────────────────────────────────────
-    ConversionJob job;
-    job.inputPath  = inputPath;
-    job.outputPath = outputPath;
-
-    while (i < args.size()) {
-        if (auto v = consumeFlag(args, i, "--video-codec"))   { job.videoCodec   = v; }
-        else if (auto v = consumeFlag(args, i, "--audio-codec"))   { job.audioCodec   = v; }
-        else if (auto v = consumeFlag(args, i, "--video-bitrate")) { job.videoBitrate = v; }
-        else if (auto v = consumeFlag(args, i, "--audio-bitrate")) { job.audioBitrate = v; }
-        else if (auto v = consumeFlag(args, i, "--resolution"))    { job.resolution   = v; }
-        else if (auto v = consumeFlag(args, i, "--framerate"))     { job.framerate    = v; }
-        else if (auto v = consumeFlag(args, i, "--pixel-format"))  { job.pixelFormat  = v; }
-        else if (auto v = consumeFlag(args, i, "--crf")) {
-            try { job.crf = std::stoi(*v); }
-            catch (...) {
-                std::cerr << COL_RED << "  Error: " << COL_RESET
-                          << "--crf requires an integer (e.g. 23)\n";
-                return 1;
-            }
-        } else {
-            std::cerr << COL_YELLOW << "  Warning: " << COL_RESET
-                      << "Unknown option '" << args[i] << "' — ignoring\n";
-        }
-        ++i;
-    }
-
-    // Print job info
-    std::cout << "  " << COL_DIM << "Input : " << COL_RESET << inputPath.string()  << "\n";
-    std::cout << "  " << COL_DIM << "Output: " << COL_RESET << outputPath.string() << "\n";
-
-    // Print any active overrides so user knows what's being applied
-    if (job.videoCodec   ) std::cout << "  " << COL_DIM << "Video codec   : " << COL_RESET << *job.videoCodec    << "\n";
-    if (job.audioCodec   ) std::cout << "  " << COL_DIM << "Audio codec   : " << COL_RESET << *job.audioCodec    << "\n";
-    if (job.videoBitrate ) std::cout << "  " << COL_DIM << "Video bitrate : " << COL_RESET << *job.videoBitrate  << "\n";
-    if (job.audioBitrate ) std::cout << "  " << COL_DIM << "Audio bitrate : " << COL_RESET << *job.audioBitrate  << "\n";
-    if (job.resolution   ) std::cout << "  " << COL_DIM << "Resolution    : " << COL_RESET << *job.resolution    << "\n";
-    if (job.framerate    ) std::cout << "  " << COL_DIM << "Framerate     : " << COL_RESET << *job.framerate     << "\n";
-    if (job.crf          ) std::cout << "  " << COL_DIM << "CRF           : " << COL_RESET << *job.crf           << "\n";
-    if (job.pixelFormat  ) std::cout << "  " << COL_DIM << "Pixel format  : " << COL_RESET << *job.pixelFormat   << "\n";
-
+// ── Single file conversion ────────────────────────────────────────────────────
+static int runSingle(const ParsedArgs& args) {
+    std::cout << "  " << COL_DIM << "Input : " << COL_RESET << args.inputPath.string()  << "\n";
+    std::cout << "  " << COL_DIM << "Output: " << COL_RESET << args.outputPath.string() << "\n";
+    printOverrides(args);
     std::cout << "\n";
 
-    // Dispatch
+    if (!checkConflict(args.outputPath, args.force)) return 1;
+
+    ConversionJob job;
+    job.inputPath  = args.inputPath;
+    job.outputPath = args.outputPath;
     job.onProgress = [](float p, const std::string& msg) { printProgress(p, msg); };
+    applyOverrides(job, args);
 
     auto result = Dispatcher::dispatch(std::move(job));
-
     std::cout << "\n\n";
 
     if (!result.success) {
@@ -223,10 +189,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Success summary
-    std::cout << "  " << COL_GREEN << "✓ Done" << COL_RESET << "\n\n";
-
-    std::cout << "  " << COL_DIM
+    std::cout << "  " << COL_GREEN << "✓ Done" << COL_RESET << "\n\n"
+              << "  " << COL_DIM
               << std::fixed << std::setprecision(2)
               << result.durationSeconds << "s  ·  "
               << humanSize(result.inputBytes) << " → "
@@ -241,4 +205,150 @@ int main(int argc, char* argv[]) {
 
     std::cout << "\n";
     return 0;
+}
+
+// ── Batch conversion ──────────────────────────────────────────────────────────
+static int runBatch(const ParsedArgs& args) {
+    fs::create_directories(args.outputDir);
+
+    std::cout << "  " << COL_DIM << "Input dir : " << COL_RESET << args.inputDir.string()  << "\n";
+    std::cout << "  " << COL_DIM << "Output dir: " << COL_RESET << args.outputDir.string() << "\n";
+    if (!args.targetExt.empty())
+        std::cout << "  " << COL_DIM << "Target    : " << COL_RESET << args.targetExt << "\n";
+    if (!args.formatMap.empty()) {
+        std::cout << "  " << COL_DIM << "Format map: " << COL_RESET;
+        bool first = true;
+        for (auto& [from, to] : args.formatMap) {
+            if (!first) std::cout << ", ";
+            std::cout << from << " → " << to;
+            first = false;
+        }
+        std::cout << "\n";
+    }
+    if (args.recursive) std::cout << "  " << COL_DIM << "Recursive : " << COL_RESET << "yes\n";
+    printOverrides(args);
+    std::cout << "\n";
+
+    // Collect files
+    std::vector<fs::path> files;
+    if (args.recursive) {
+        for (auto& entry : fs::recursive_directory_iterator(args.inputDir))
+            if (entry.is_regular_file())
+                files.push_back(entry.path());
+    } else {
+        for (auto& entry : fs::directory_iterator(args.inputDir))
+            if (entry.is_regular_file())
+                files.push_back(entry.path());
+    }
+
+    if (files.empty()) {
+        std::cout << "  " << COL_YELLOW << "⚠ " << COL_RESET << "No files found in input directory.\n\n";
+        return 0;
+    }
+
+    // Pre-scan for stem collisions — only among files that will actually be processed
+    std::map<std::string, int> stemCount;
+    for (auto& file : files) {
+        if (resolveTargetExt(file, args).empty()) continue;
+        stemCount[file.stem().string()]++;
+    }
+
+    int success = 0;
+    int skipped = 0;
+    int failed  = 0;
+
+    for (auto& file : files) {
+        std::string toExt = resolveTargetExt(file, args);
+
+        if (toExt.empty()) {
+            std::cout << "  " << COL_DIM << "Skip  " << COL_RESET
+                      << file.filename().string() << " (no matching rule)\n";
+            ++skipped;
+            continue;
+        }
+
+        // If multiple input files share the same stem, append source ext to avoid collision
+        std::string inExt = file.extension().string();
+        if (!inExt.empty() && inExt[0] == '.') inExt = inExt.substr(1);
+
+        bool collision = stemCount[file.stem().string()] > 1;
+        std::string outName = collision
+            ? file.stem().string() + "_" + inExt + "." + toExt
+            : file.stem().string() + "." + toExt;
+
+        // Preserve relative path structure if recursive
+        fs::path relPath = fs::relative(file, args.inputDir);
+        fs::path outFile = args.outputDir / relPath.parent_path() / outName;
+        fs::create_directories(outFile.parent_path());
+
+        if (!checkConflict(outFile, args.force)) {
+            ++skipped;
+            continue;
+        }
+
+        std::cout << "  " << COL_DIM << file.filename().string() << COL_RESET
+                  << " → " << outFile.filename().string() << "\n";
+
+        ConversionJob job;
+        job.inputPath  = file;
+        job.outputPath = outFile;
+        job.onProgress = [](float p, const std::string& msg) { printProgress(p, msg); };
+        applyOverrides(job, args);
+
+        auto result = Dispatcher::dispatch(std::move(job));
+        std::cout << "\n";
+
+        if (!result.success) {
+            std::cout << "  " << COL_RED << "  ✗ " << COL_RESET << result.errorMsg << "\n";
+            ++failed;
+        } else {
+            std::cout << "  " << COL_GREEN << "  ✓ " << COL_RESET
+                      << COL_DIM
+                      << std::fixed << std::setprecision(2)
+                      << result.durationSeconds << "s  ·  "
+                      << humanSize(result.inputBytes) << " → "
+                      << humanSize(result.outputBytes)
+                      << COL_RESET << "\n";
+
+            for (auto& w : result.warnings)
+                std::cout << "  " << COL_YELLOW << "  ⚠ " << COL_RESET << w << "\n";
+
+            ++success;
+        }
+
+        std::cout << "\n";
+    }
+
+    // Summary
+    std::cout << "  ─────────────────────────────────────\n"
+              << "  " << COL_GREEN << "✓ " << success << " converted" << COL_RESET;
+    if (failed  > 0) std::cout << "  " << COL_RED    << "✗ " << failed  << " failed"  << COL_RESET;
+    if (skipped > 0) std::cout << "  " << COL_YELLOW << "⊘ " << skipped << " skipped" << COL_RESET;
+    std::cout << "\n\n";
+
+    return failed > 0 ? 1 : 0;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+int main(int argc, char* argv[]) {
+    printBanner();
+
+    if (argc < 2) {
+        printUsage();
+        return 0;
+    }
+
+    ParsedArgs args = ArgParser::parse(argc, argv);
+
+    if (args.isHelp)    { printUsage();   return 0; }
+    if (args.isFormats) { printFormats(); return 0; }
+
+    if (args.hasError) {
+        std::cout << "  " << COL_RED << "Error: " << COL_RESET << args.errorMsg << "\n\n";
+        printUsage();
+        return 1;
+    }
+
+    if (args.isBatch) return runBatch(args);
+    else              return runSingle(args);
 }
