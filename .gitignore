@@ -25,3 +25,12 @@ tests/audio/
 tests/video/
 tests/images/
 tests/models/
+
+# Generated test output
+tests/test_output/
+
+# Ebook and archive test files (can be large)
+tests/ebooks/
+tests/archives/
+tests/data/
+tests/documents/
