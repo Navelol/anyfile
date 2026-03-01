@@ -13,6 +13,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: root.surface
+        clip: true
         Rectangle {
             anchors.bottom: parent.bottom
             width: parent.width
@@ -30,8 +31,10 @@ Item {
         // Emblem
         Image {
             source: "qrc:/icons/emblem.png"
-            width: 28
-            height: 28
+            Layout.preferredWidth: 28
+            Layout.preferredHeight: 28
+            Layout.maximumWidth: 28
+            Layout.maximumHeight: 28
             fillMode: Image.PreserveAspectFit
             smooth: true
         }
