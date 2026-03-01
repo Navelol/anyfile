@@ -5,8 +5,8 @@
       <author>Assimp</author>
       <authoring_tool>Assimp Exporter</authoring_tool>
     </contributor>
-    <created>2026-03-01T11:30:38</created>
-    <modified>2026-03-01T11:30:38</modified>
+    <created>2026-03-01T11:46:53</created>
+    <modified>2026-03-01T11:46:53</modified>
     <unit name="meter" meter="1" />
     <up_axis>Y_UP</up_axis>
   </asset>

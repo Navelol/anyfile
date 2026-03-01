@@ -88,6 +88,20 @@ echo "Hello from everyfile" > "$OUT/documents/seed.txt"
 echo "# Hello\n\nThis is **markdown**." > "$OUT/documents/seed.md"
 echo "<html><body><h1>Hello</h1><p>everyfile test</p></body></html>" > "$OUT/documents/seed.html"
 
+# Ebooks
+cat > "$OUT/data/seed.ini" << 'EOF'
+[user]
+name = Alice
+age = 30
+city = Tampa
+EOF
+
+cat > "$OUT/data/seed.env" << 'EOF'
+NAME="Alice"
+AGE=30
+CITY="Tampa"
+EOF
+
 # Copy real test files if they exist
 [ -f "$TESTS/data/people.json" ]       && cp "$TESTS/data/people.json"       "$OUT/data/people.json"
 [ -f "$TESTS/documents/test.docx" ]    && cp "$TESTS/documents/test.docx"    "$OUT/documents/seed.docx"
@@ -191,6 +205,8 @@ run_test "EPUB → AZW3"  "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.azw3"
 run_test "EPUB → PDF"   "$OUT/ebooks/seed.epub"  "$OUT/ebooks/out.pdf"
 run_test "MOBI → EPUB"  "$OUT/ebooks/seed.mobi"  "$OUT/ebooks/from_mobi.epub"
 run_test "MOBI → AZW3"  "$OUT/ebooks/seed.mobi"  "$OUT/ebooks/from_mobi.azw3"
+run_test "FB2  → EPUB"  "$OUT/ebooks/seed.fb2"  "$OUT/ebooks/from_fb2.epub"
+run_test "DJVU → PDF"   "$OUT/ebooks/seed.djvu" "$OUT/ebooks/from_djvu.pdf"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IMAGES
@@ -239,6 +255,14 @@ run_test "FBX  → GLB"   "$OUT/models/seed.fbx"  "$OUT/models/from_fbx.glb"
 run_test "FBX  → STL"   "$OUT/models/seed.fbx"  "$OUT/models/from_fbx.stl"
 run_test "STL  → GLB"   "$OUT/models/seed.stl"  "$OUT/models/from_stl.glb"
 run_test "STL  → OBJ"   "$OUT/models/seed.stl"  "$OUT/models/from_stl.obj"
+
+# INI and ENV
+run_test "JSON → INI"   "$OUT/data/seed.json"   "$OUT/data/out.ini"
+run_test "JSON → ENV"   "$OUT/data/seed.json"   "$OUT/data/out.env"
+run_test "INI  → JSON"  "$OUT/data/seed.ini"    "$OUT/data/from_ini.json"
+run_test "INI  → YAML"  "$OUT/data/seed.ini"    "$OUT/data/from_ini.yaml"
+run_test "ENV  → JSON"  "$OUT/data/seed.env"    "$OUT/data/from_env.json"
+run_test "ENV  → TOML"  "$OUT/data/seed.env"    "$OUT/data/from_env.toml"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SUMMARY

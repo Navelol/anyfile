@@ -42,6 +42,10 @@ public:
                 pivot = parseYaml(content);
             } else if (inExt == "toml") {
                 pivot = parseToml(content);
+            } else if (inExt == "ini") {
+                pivot = parseIni(content);
+            } else if (inExt == "env") {
+                pivot = parseEnv(content);
             } else {
                 return ConversionResult::err("Unsupported input data format: " + inExt);
             }
@@ -66,6 +70,10 @@ public:
                 output = toYaml(pivot);
             } else if (outExt == "toml") {
                 output = toToml(pivot);
+            } else if (outExt == "ini") {
+                output = toIni(pivot);
+            } else if (outExt == "env") {
+                output = toEnv(pivot);
             } else {
                 return ConversionResult::err("Unsupported output data format: " + outExt);
             }
@@ -272,6 +280,75 @@ private:
         return result;
     }
 
+    static json parseIni(const std::string& s) {
+        json result = json::object();
+        std::istringstream ss(s);
+        std::string line;
+        std::string currentSection;
+
+        while (std::getline(ss, line)) {
+            // Strip comments
+            auto commentPos = line.find(';');
+            if (commentPos != std::string::npos)
+                line = line.substr(0, commentPos);
+            auto hashPos = line.find('#');
+            if (hashPos != std::string::npos)
+                line = line.substr(0, hashPos);
+
+            line = trim(line);
+            if (line.empty()) continue;
+
+            // Section header [section]
+            if (line.front() == '[' && line.back() == ']') {
+                currentSection = line.substr(1, line.size() - 2);
+                result[currentSection] = json::object();
+                continue;
+            }
+
+            auto eqPos = line.find('=');
+            if (eqPos == std::string::npos) continue;
+
+            std::string key = trim(line.substr(0, eqPos));
+            std::string val = trim(line.substr(eqPos + 1));
+
+            if (currentSection.empty())
+                result[key] = coerceValue(val);
+            else
+                result[currentSection][key] = coerceValue(val);
+        }
+        return result;
+    }
+
+    static json parseEnv(const std::string& s) {
+        json result = json::object();
+        std::istringstream ss(s);
+        std::string line;
+
+        while (std::getline(ss, line)) {
+            auto commentPos = line.find('#');
+            if (commentPos != std::string::npos)
+                line = line.substr(0, commentPos);
+
+            line = trim(line);
+            if (line.empty()) continue;
+
+            auto eqPos = line.find('=');
+            if (eqPos == std::string::npos) continue;
+
+            std::string key = trim(line.substr(0, eqPos));
+            std::string val = trim(line.substr(eqPos + 1));
+
+            // Strip quotes
+            if (val.size() >= 2 &&
+                ((val.front() == '"' && val.back() == '"') ||
+                (val.front() == '\'' && val.back() == '\'')))
+                val = val.substr(1, val.size() - 2);
+
+            result[key] = coerceValue(val);
+        }
+        return result;
+    }
+
     // ── Serializers (JSON pivot → output) ────────────────────────────────────
 
     static std::string toJson(const json& j) {
@@ -387,6 +464,45 @@ private:
                 else
                     ss << k << " = " << v.dump() << "\n";
             }
+        }
+        return ss.str();
+    }
+
+    static std::string toIni(const json& j) {
+        std::ostringstream ss;
+
+        if (!j.is_object())
+            throw std::runtime_error("INI output requires a top-level object");
+
+        // Flat keys first
+        for (auto& [key, val] : j.items()) {
+            if (val.is_object()) continue;
+            if (val.is_string()) ss << key << " = " << val.get<std::string>() << "\n";
+            else                 ss << key << " = " << val.dump() << "\n";
+        }
+
+        // Sections
+        for (auto& [key, val] : j.items()) {
+            if (!val.is_object()) continue;
+            ss << "\n[" << key << "]\n";
+            for (auto& [k, v] : val.items()) {
+                if (v.is_string()) ss << k << " = " << v.get<std::string>() << "\n";
+                else               ss << k << " = " << v.dump() << "\n";
+            }
+        }
+        return ss.str();
+    }
+
+    static std::string toEnv(const json& j) {
+        std::ostringstream ss;
+
+        if (!j.is_object())
+            throw std::runtime_error("ENV output requires a top-level object");
+
+        for (auto& [key, val] : j.items()) {
+            if (val.is_object() || val.is_array()) continue;
+            if (val.is_string()) ss << key << "=\"" << val.get<std::string>() << "\"\n";
+            else                 ss << key << "=" << val.dump() << "\n";
         }
         return ss.str();
     }

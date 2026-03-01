@@ -60,6 +60,11 @@ private:
         reg("tga",  Category::Image, "image/x-tga");
         reg("ico",  Category::Image, "image/x-icon");
         reg("svg",  Category::Image, "image/svg+xml");
+        reg("raw",  Category::Image, "image/x-raw");
+        reg("cr2",  Category::Image, "image/x-canon-cr2");
+        reg("nef",  Category::Image, "image/x-nikon-nef");
+        reg("arw",  Category::Image, "image/x-sony-arw");
+        reg("dng",  Category::Image, "image/x-adobe-dng");
 
         // ── Video ─────────────────────────────────────────────────────────────
         reg("mp4",  Category::Video, "video/mp4");
@@ -73,6 +78,8 @@ private:
         reg("3gp",  Category::Video, "video/3gpp");
         reg("ogv",  Category::Video, "video/ogg");
         reg("ts",   Category::Video, "video/mp2t");
+        reg("vob",  Category::Video, "video/dvd");
+        reg("rmvb", Category::Video, "video/x-pn-realvideo");
 
         // ── Audio ─────────────────────────────────────────────────────────────
         reg("mp3",  Category::Audio, "audio/mpeg");
@@ -84,6 +91,7 @@ private:
         reg("m4a",  Category::Audio, "audio/mp4");
         reg("wma",  Category::Audio, "audio/x-ms-wma");
         reg("aiff", Category::Audio, "audio/aiff");
+        reg("caf",  Category::Audio, "audio/x-caf");
 
         // ── 3D Models ─────────────────────────────────────────────────────────
         reg("fbx",  Category::Model3D, "model/fbx");
@@ -121,6 +129,8 @@ private:
         reg("csv",  Category::Data, "text/csv");
         reg("tsv",  Category::Data, "text/tab-separated-values");
         reg("toml", Category::Data, "application/toml");
+        reg("ini",  Category::Data, "text/x-ini");
+        reg("env",  Category::Data, "text/x-dotenv");
 
         // ── Documents ─────────────────────────────────────────────────────────────
         reg("pdf",  Category::Document, "application/pdf");
@@ -148,6 +158,9 @@ private:
         reg("mobi", Category::Ebook, "application/x-mobipocket-ebook");
         reg("azw3", Category::Ebook, "application/vnd.amazon.ebook");
         reg("azw",  Category::Ebook, "application/vnd.amazon.ebook");
+        reg("fb2",  Category::Ebook, "application/x-fictionbook");
+        reg("djvu", Category::Ebook, "image/vnd.djvu");
+        reg("lit",  Category::Ebook, "application/x-ms-reader");
 
         // ── Conversion target map ─────────────────────────────────────────────
         // Images
@@ -162,6 +175,11 @@ private:
         targets("avif", {"png","jpg","webp"});
         targets("tga",  {"png","jpg","webp","bmp"});
         targets("svg",  {"png","jpg","webp"});
+        targets("raw",  {"jpg","png","tiff","webp"});
+        targets("cr2",  {"jpg","png","tiff","webp"});
+        targets("nef",  {"jpg","png","tiff","webp"});
+        targets("arw",  {"jpg","png","tiff","webp"});
+        targets("dng",  {"jpg","png","tiff","webp"});
 
         // Video
         targets("mp4",  {"mp3","wav","aac","webm","mkv","avi","mov","gif"});
@@ -171,6 +189,8 @@ private:
         targets("webm", {"mp4","mp3","wav","gif"});
         targets("flv",  {"mp4","mp3","wav"});
         targets("wmv",  {"mp4","mp3","wav","webm"});
+        targets("vob",  {"mp4","mkv","avi","mp3","wav"});
+        targets("rmvb", {"mp4","mkv","avi","mp3","wav"});
 
         // Audio
         targets("mp3",  {"wav","flac","aac","ogg","opus","m4a"});
@@ -180,6 +200,7 @@ private:
         targets("ogg",  {"mp3","wav","flac","aac"});
         targets("opus", {"mp3","wav","ogg","flac"});
         targets("m4a",  {"mp3","wav","flac","aac"});
+        targets("caf",  {"mp3","wav","flac","aac","ogg"});
 
         // 3D
         targets("fbx",  {"obj","glb","gltf","stl","dae","ply"});
@@ -192,13 +213,15 @@ private:
         targets("3ds",  {"obj","glb","gltf","stl"});
 
         // Data
-        targets("json", {"xml","yaml","csv","toml"});
+        targets("json", {"xml","yaml","csv","toml","ini","env"});
         targets("xml",  {"json","yaml","csv"});
         targets("yaml", {"json","xml","csv","toml"});
         targets("yml",  {"json","xml","csv","toml"});
         targets("csv",  {"json","xml","yaml","tsv","ods","xlsx","xls"});
         targets("tsv",  {"csv","json"});
         targets("toml", {"json","yaml"});
+        targets("ini",  {"json","yaml","toml","env"});
+        targets("env",  {"json","yaml","toml","ini"});
 
         // Archives
         targets("zip",  {"tar","gz","bz2","xz","7z","zst","tgz","tbz2","txz","lz4","lzma"});
@@ -241,6 +264,9 @@ private:
         targets("mobi", {"epub","azw3","pdf"});
         targets("azw3", {"epub","mobi","pdf"});
         targets("azw",  {"epub","mobi","pdf"});
+        targets("fb2",  {"epub","mobi","azw3","pdf"});
+        targets("djvu", {"pdf","epub"});
+        targets("lit",  {"epub","mobi","pdf"});
     }
 
     void reg(const std::string& ext, Category cat, const std::string& mime) {
