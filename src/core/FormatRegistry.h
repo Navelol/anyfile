@@ -243,7 +243,7 @@ private:
         targets("doc",  {"pdf","docx","odt","rtf","txt"});
         targets("odt",  {"pdf","docx","doc","rtf","txt","html"});
         targets("rtf",  {"pdf","docx","odt","txt"});
-        targets("pdf",  {"odt","txt","html"});
+        targets("pdf",  {"odt","txt","html","png","jpg","webp"});
         targets("xlsx", {"pdf","ods","csv","xls"});
         targets("xls",  {"pdf","xlsx","ods","csv"});
         targets("ods",  {"pdf","xlsx","xls","csv"});

@@ -7,6 +7,7 @@
 #include "DataConverter.h"
 #include "DocumentConverter.h"
 #include "ArchiveConverter.h"
+#include "PdfRenderer.h"
 
 
 namespace converter {
@@ -71,6 +72,12 @@ private:
         // ── 3D models ─────────────────────────────────────────────────────────
         if (inCat == Category::Model3D || outCat == Category::Model3D) {
             return ModelConverter::convert(job);
+        }
+
+        // ── PDF → Image ───────────────────────────────────────────────────────────
+        if (job.inputFormat.ext == "pdf" &&
+            (outCat == Category::Image)) {
+            return PdfRenderer::convert(job);
         }
 
         // ── Media: image, video, audio ─────────────────────────────────────
