@@ -92,6 +92,7 @@ Item {
         // Minimize
         Rectangle {
             width: 30; height: 30; radius: 7; color: minMa.containsMouse ? root.surfaceHi : "transparent"
+            Layout.alignment: Qt.AlignVCenter
             Behavior on color { ColorAnimation { duration: 100 } }
             Text {
                 anchors.centerIn: parent; text: "\u2212"
@@ -105,6 +106,7 @@ Item {
         // Maximize / Restore
         Rectangle {
             width: 30; height: 30; radius: 7; color: maxMa.containsMouse ? root.surfaceHi : "transparent"
+            Layout.alignment: Qt.AlignVCenter
             Behavior on color { ColorAnimation { duration: 100 } }
             Text {
                 anchors.centerIn: parent
@@ -123,6 +125,7 @@ Item {
         Rectangle {
             width: 30; height: 30; radius: 7
             color: closeMa.containsMouse ? root.errorClr : "transparent"
+            Layout.alignment: Qt.AlignVCenter
             Behavior on color { ColorAnimation { duration: 100 } }
             Text {
                 anchors.centerIn: parent; text: "\u00D7"

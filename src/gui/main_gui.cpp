@@ -19,6 +19,8 @@ int main(int argc, char* argv[]) {
     QQmlApplicationEngine engine;
 
     engine.addImportPath("qrc:/");
+    // Allow QML modules to be found next to the executable (e.g. deployed bin/qml/)
+    engine.addImportPath(QCoreApplication::applicationDirPath() + "/qml");
 
     const QUrl url(u"qrc:/Anyfile/qml/Main.qml"_qs);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,

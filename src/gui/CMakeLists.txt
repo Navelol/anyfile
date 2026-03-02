@@ -67,13 +67,21 @@ set_target_properties(anyfile_gui PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "Anyfile"
     MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1"
+    WIN32_EXECUTABLE TRUE
 )
 
 # ── Windows: deploy Qt DLLs next to the exe (requires windeployqt) ────────────
 if(WIN32)
+    # MSYS2 ships windeployqt as windeployqt6; fall back to windeployqt for other installs
+    if(EXISTS "${Qt6_DIR}/../../../bin/windeployqt6.exe")
+        set(WINDEPLOYQT_BIN "${Qt6_DIR}/../../../bin/windeployqt6.exe")
+    else()
+        set(WINDEPLOYQT_BIN "${Qt6_DIR}/../../../bin/windeployqt.exe")
+    endif()
     add_custom_command(TARGET anyfile_gui POST_BUILD
-        COMMAND "${Qt6_DIR}/../../../bin/windeployqt"
-                --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+        COMMAND "${WINDEPLOYQT_BIN}"
+                --no-translations
+                --no-quick-import
                 "$<TARGET_FILE:anyfile_gui>"
         COMMENT "Running windeployqt..."
         VERBATIM
