@@ -13,6 +13,7 @@ ApplicationWindow {
     minimumWidth: 700
     minimumHeight: 540
     title: "anyfile"
+    flags: Qt.FramelessWindowHint | Qt.Window
 
     // ── Palette ───────────────────────────────────────────────────────────────
     readonly property color bg:        "#0e0e0f"
@@ -88,6 +89,50 @@ ApplicationWindow {
                 font.letterSpacing: 2
             }
         }
+    }
+
+    // ── Frameless resize handles ───────────────────────────────────────────────
+    // Edges
+    Item {
+        z: 999; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.LeftEdge) }
+        HoverHandler { cursorShape: Qt.SizeHorCursor }
+    }
+    Item {
+        z: 999; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.RightEdge) }
+        HoverHandler { cursorShape: Qt.SizeHorCursor }
+    }
+    Item {
+        z: 999; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.TopEdge) }
+        HoverHandler { cursorShape: Qt.SizeVerCursor }
+    }
+    Item {
+        z: 999; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.BottomEdge) }
+        HoverHandler { cursorShape: Qt.SizeVerCursor }
+    }
+    // Corners
+    Item {
+        z: 999; anchors.left: parent.left; anchors.top: parent.top; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.LeftEdge | Qt.TopEdge) }
+        HoverHandler { cursorShape: Qt.SizeFDiagCursor }
+    }
+    Item {
+        z: 999; anchors.right: parent.right; anchors.top: parent.top; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.RightEdge | Qt.TopEdge) }
+        HoverHandler { cursorShape: Qt.SizeBDiagCursor }
+    }
+    Item {
+        z: 999; anchors.left: parent.left; anchors.bottom: parent.bottom; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.LeftEdge | Qt.BottomEdge) }
+        HoverHandler { cursorShape: Qt.SizeBDiagCursor }
+    }
+    Item {
+        z: 999; anchors.right: parent.right; anchors.bottom: parent.bottom; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.RightEdge | Qt.BottomEdge) }
+        HoverHandler { cursorShape: Qt.SizeFDiagCursor }
     }
 
     // ── Layout ────────────────────────────────────────────────────────────────

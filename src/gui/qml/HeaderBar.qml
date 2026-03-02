@@ -1,10 +1,25 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 
 Item {
     id: header
     height: 52
+
+    // ── Drag-to-move & double-click-to-maximize ───────────────────────────────
+    DragHandler {
+        target: null
+        onActiveChanged: if (active) root.startSystemMove()
+    }
+    TapHandler {
+        onDoubleTapped: {
+            if (root.visibility === Window.Maximized)
+                root.showNormal()
+            else
+                root.showMaximized()
+        }
+    }
 
     property bool showFormats: false
 
@@ -68,6 +83,56 @@ Item {
             width: 36
             onClicked: aboutDialog.open()
         }
+
+        Item { width: 10 }
+        Rectangle { width: 1; height: 18; color: root.border; opacity: 0.7 }
+        Item { width: 6 }
+
+        // ── Window controls ──────────────────────────────────────────────────
+        // Minimize
+        Rectangle {
+            width: 30; height: 30; radius: 7; color: minMa.containsMouse ? root.surfaceHi : "transparent"
+            Behavior on color { ColorAnimation { duration: 100 } }
+            Text {
+                anchors.centerIn: parent; text: "\u2212"
+                font.pixelSize: 14; font.weight: Font.Medium
+                font.family: root.appFont; color: root.textDim
+            }
+            MouseArea { id: minMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.showMinimized() }
+        }
+        Item { width: 2 }
+
+        // Maximize / Restore
+        Rectangle {
+            width: 30; height: 30; radius: 7; color: maxMa.containsMouse ? root.surfaceHi : "transparent"
+            Behavior on color { ColorAnimation { duration: 100 } }
+            Text {
+                anchors.centerIn: parent
+                text: root.visibility === Window.Maximized ? "\u2752" : "\u25A1"
+                font.pixelSize: root.visibility === Window.Maximized ? 11 : 13
+                font.weight: Font.Medium; font.family: root.appFont; color: root.textDim
+            }
+            MouseArea {
+                id: maxMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                onClicked: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()
+            }
+        }
+        Item { width: 2 }
+
+        // Close
+        Rectangle {
+            width: 30; height: 30; radius: 7
+            color: closeMa.containsMouse ? root.errorClr : "transparent"
+            Behavior on color { ColorAnimation { duration: 100 } }
+            Text {
+                anchors.centerIn: parent; text: "\u00D7"
+                font.pixelSize: 16; font.weight: Font.Medium
+                font.family: root.appFont
+                color: closeMa.containsMouse ? "#fff" : root.textDim
+            }
+            MouseArea { id: closeMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
+        }
+        Item { width: 4 }
     }
 
     // ── About dialog ─────────────────────────────────────────────────────────
