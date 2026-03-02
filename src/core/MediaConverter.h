@@ -55,13 +55,13 @@ private:
 
     static Defaults defaultsFor(const std::string& outExt) {
         if (outExt == "mp4" || outExt == "m4v")
-            return { "libx264", "aac", "yuv420p", 23 };
+            return { "libx264", "aac", "yuv420p", 18 };
         if (outExt == "mkv")
-            return { "libx264", "aac", "yuv420p", 23 };
+            return { "libx264", "aac", "yuv420p", 18 };
         if (outExt == "webm")
-            return { "libvpx-vp9", "libopus", "yuv420p", 31 };
+            return { "libvpx-vp9", "libopus", "yuv420p", 20 };
         if (outExt == "mov")
-            return { "libx264", "aac", "yuv420p", 23 };
+            return { "libx264", "aac", "yuv420p", 18 };
         if (outExt == "avi")
             return { "mpeg4", "libmp3lame", "yuv420p", -1 };
         if (outExt == "gif")
@@ -155,11 +155,13 @@ private:
         cmd << "ffmpeg -y -i \"" << job.inputPath.string() << "\"";
 
         if (!vcodec.empty())  cmd << " -c:v " << vcodec;
+        if (!vcodec.empty() && (outExt == "mp4" || outExt == "mkv" || outExt == "mov")) cmd << " -preset slow";
         if (!acodec.empty())  cmd << " -c:a " << acodec;
         if (crf >= 0)         cmd << " -crf " << crf;
         if (!pix.empty())     cmd << " -pix_fmt " << pix;
         if (job.videoBitrate) cmd << " -b:v " << *job.videoBitrate;
         if (job.audioBitrate) cmd << " -b:a " << *job.audioBitrate;
+        else if (!acodec.empty()) cmd << " -b:a 320k";
 
         if (job.resolution) {
             std::string res = *job.resolution;
