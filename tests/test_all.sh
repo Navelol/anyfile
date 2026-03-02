@@ -226,6 +226,18 @@ mkdir -p "$OUT/images" "$OUT/audio" "$OUT/video" "$OUT/models" "$OUT/ebooks" "$O
 
 echo -e "  ${GREEN}Done${RESET}"
 
+# ── Misnamed seed files for magic-number detection tests ─────────────────────
+# These are real files with wrong extensions — magic detection should still
+# identify them correctly and route them to the right converter.
+mkdir -p "$OUT/magic"
+[ -f "$OUT/images/seed.png" ]  && cp "$OUT/images/seed.png"  "$OUT/magic/png_as.dat"
+[ -f "$OUT/images/seed.png" ]  && cp "$OUT/images/seed.png"  "$OUT/magic/png_as.mp3"
+[ -f "$OUT/audio/seed.mp3" ]   && cp "$OUT/audio/seed.mp3"   "$OUT/magic/mp3_as.dat"
+[ -f "$OUT/audio/seed.mp3" ]   && cp "$OUT/audio/seed.mp3"   "$OUT/magic/mp3_as.xyz"
+[ -f "$OUT/archives/seed.zip" ] && cp "$OUT/archives/seed.zip" "$OUT/magic/zip_as.dat"
+[ -f "$OUT/archives/seed.zip" ] && cp "$OUT/archives/seed.zip" "$OUT/magic/zip_as.bak"
+[ -f "$OUT/documents/seed.pdf" ] && cp "$OUT/documents/seed.pdf" "$OUT/magic/pdf_as.dat"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA FORMATS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -372,6 +384,49 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 # IMAGES
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAGIC NUMBER DETECTION
+# Tests that files with wrong/missing extensions are identified by content,
+# not by filename. Each input is a real file deliberately misnamed.
+# ─────────────────────────────────────────────────────────────────────────────
+
+section "Magic Number Detection"
+
+# Image disguised as unrelated extensions
+run_test "Magic: PNG as .dat  → JPG"   "$OUT/magic/png_as.dat"  "$OUT/magic/png_dat_out.jpg"
+run_test "Magic: PNG as .mp3  → WEBP"  "$OUT/magic/png_as.mp3"  "$OUT/magic/png_mp3_out.webp"
+
+# Audio disguised as unrelated extensions
+run_test "Magic: MP3 as .dat  → WAV"   "$OUT/magic/mp3_as.dat"  "$OUT/magic/mp3_dat_out.wav"
+run_test "Magic: MP3 as .xyz  → FLAC"  "$OUT/magic/mp3_as.xyz"  "$OUT/magic/mp3_xyz_out.flac"
+
+# Archive disguised as unrelated extensions
+run_test "Magic: ZIP as .dat  → TAR"   "$OUT/magic/zip_as.dat"  "$OUT/magic/zip_dat_out.tar"
+run_test "Magic: ZIP as .bak  → GZ"    "$OUT/magic/zip_as.bak"  "$OUT/magic/zip_bak_out.gz"
+
+# PDF disguised as .dat — should route to PdfRenderer
+if [ "$HAS_PDFTOPPM" -eq 1 ]; then
+    _in="$OUT/magic/pdf_as.dat"
+    _arg="$OUT/magic/pdf_dat_out.png"
+    _out="$OUT/magic/pdf_dat_out.zip"
+    if [ ! -f "$_in" ]; then
+        echo -e "  ${YELLOW}SKIP${RESET}  Magic: PDF as .dat → PNG (zip)  (no input file)"
+        ((SKIP++))
+    else
+        "$BIN" "$(to_bin_path "$_in")" "$(to_bin_path "$_arg")" > /dev/null 2>&1
+        if [ -f "$_out" ] && [ -s "$_out" ]; then
+            echo -e "  ${GREEN}PASS${RESET}  Magic: PDF as .dat → PNG (zip)"
+            ((PASS++))
+        else
+            echo -e "  ${RED}FAIL${RESET}  Magic: PDF as .dat → PNG (zip)"
+            ((FAIL++))
+        fi
+    fi
+else
+    echo -e "  ${YELLOW}SKIP${RESET}  Magic: PDF as .dat → PNG (zip)  (pdftoppm not installed)"
+    ((SKIP++))
+fi
 
 section "Images"
 
