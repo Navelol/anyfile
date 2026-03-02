@@ -8,6 +8,7 @@
 #include <QVariantMap>
 #include <QThread>
 #include <QTimer>
+#include <QFileDialog>
 #include <QtQml/qqml.h>
 
 #include "../core/Dispatcher.h"
@@ -213,7 +214,14 @@ public:
         }
         return result;
     }
+    // ── Native file picker (bypasses portal, reliably supports multi-select) ──
+    Q_INVOKABLE QStringList pickFiles(const QString& title = "Select files") const {
+        return QFileDialog::getOpenFileNames(nullptr, title);
+    }
 
+    Q_INVOKABLE QString pickFolder(const QString& title = "Select folder") const {
+        return QFileDialog::getExistingDirectory(nullptr, title);
+    }
     // ── Check if a file path already exists on disk ─────────────────────────
     Q_INVOKABLE bool fileExists(const QString& path) const {
         return fs::exists(fs::path(path.toStdString()));

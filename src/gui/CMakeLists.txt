@@ -7,6 +7,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Quick
     QuickControls2
     Qml
+    Widgets
 )
 
 qt_standard_project_setup()
@@ -52,6 +53,7 @@ target_link_libraries(anyfile_gui PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Qml
+    Qt6::Widgets
     converter_core
 )
 

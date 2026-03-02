@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 
 Item {
     id: panel
@@ -220,31 +219,36 @@ Item {
         }
     }
 
-    // -- Dialogs ---------------------------------------------------------------
-    FileDialog {
-        id: batchInputPicker
-        title: "Select files"
-        fileMode: FileDialog.OpenFiles
-        onAccepted: {
-            for (var i = 0; i < selectedFiles.length; i++)
-                panel.addFile(bridge.urlToPath(selectedFiles[i].toString()))
+    // -- Native pickers (call C++ QFileDialog directly, bypasses portal) -------
+    function openFilePicker() {
+        var files = bridge.pickFiles("Select files")
+        for (var i = 0; i < files.length; i++)
+            panel.addFile(files[i])
+    }
+
+    function openFolderPicker() {
+        var dir = bridge.pickFolder("Select folder to convert")
+        if (dir === "") return
+        panel.folderPath   = dir
+        panel.folderFiles  = bridge.scanFolder(dir, panel.folderRecurse)
+        panel.folderOutExt = ""
+    }
+
+    function openOutDirPicker() {
+        var dir = bridge.pickFolder("Choose output folder")
+        if (dir !== "") {
+            panel.folderOutDir   = dir
+            panel.folderSameDir  = false
         }
     }
 
-    FolderDialog {
-        id: folderInputPicker
-        title: "Select folder"
-        onAccepted: {
-            panel.folderPath   = bridge.urlToPath(selectedFolder.toString())
-            panel.folderFiles  = bridge.scanFolder(panel.folderPath, panel.folderRecurse)
-            panel.folderOutExt = ""
+    function openBatchOutDirPicker() {
+        // (folder mode output — reuse same helper, write to folderOutDir)
+        var dir = bridge.pickFolder("Choose output folder")
+        if (dir !== "") {
+            panel.folderOutDir  = dir
+            panel.folderSameDir = false
         }
-    }
-
-    FolderDialog {
-        id: folderOutDirPicker
-        title: "Output folder"
-        onAccepted: panel.folderOutDir = bridge.urlToPath(selectedFolder.toString())
     }
 
     // -- Layout ----------------------------------------------------------------
@@ -315,7 +319,7 @@ Item {
                 }
                 MouseArea {
                     id: emptyDropMa; anchors.fill: parent; hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor; onClicked: batchInputPicker.open()
+                    cursorShape: Qt.PointingHandCursor; onClicked: panel.openFilePicker()
                 }
             }
 
@@ -331,7 +335,7 @@ Item {
                     Text { id: addMoreLbl; anchors.centerIn: parent; text: "+ add files"
                         font.pixelSize: 10; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
                     MouseArea { id: addMoreMa; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor; onClicked: batchInputPicker.open() }
+                        cursorShape: Qt.PointingHandCursor; onClicked: panel.openFilePicker() }
                 }
 
                 DropArea {
@@ -570,7 +574,7 @@ Item {
                 }
                 MouseArea {
                     id: folderZoneMa; anchors.fill: parent; hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor; onClicked: folderInputPicker.open()
+                    cursorShape: Qt.PointingHandCursor; onClicked: panel.openFolderPicker()
                 }
             }
 
@@ -672,7 +676,7 @@ Item {
                     }
                     MouseArea { id: fcdMa; anchors.fill: parent; hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { panel.folderSameDir = false; folderOutDirPicker.open() } }
+                        onClicked: panel.openOutDirPicker() }
                 }
             }
         }
