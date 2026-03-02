@@ -79,6 +79,21 @@ private:
         return { "", "", "", -1 };
     }
 
+    // ── ICO — multi-resolution Windows icon (256, 48, 32, 16 px) ──────────────
+    static std::string buildIcoCmd(const ConversionJob& job) {
+        // Generate a proper 4-size ICO: 256, 48, 32, 16
+        std::ostringstream cmd;
+        cmd << "ffmpeg -y -i \"" << job.inputPath.string() << "\""
+            << " -filter_complex"
+            << " \"[0:v]scale=256:256:flags=lanczos[s256]"
+            << ";[0:v]scale=48:48:flags=lanczos[s48]"
+            << ";[0:v]scale=32:32:flags=lanczos[s32]"
+            << ";[0:v]scale=16:16:flags=lanczos[s16]\""
+            << " -map \"[s256]\" -map \"[s48]\" -map \"[s32]\" -map \"[s16]\""
+            << " \"" << job.outputPath.string() << "\" " << DEVNULL;
+        return cmd.str();
+    }
+
     // ── GIF gets special treatment — two-pass palettegen ─────────────────────
     static std::string buildGifCmd(const ConversionJob& job) {
         std::string scaleFilter;
@@ -119,6 +134,9 @@ private:
 
         if (outExt == "gif")
             return buildGifCmd(job);
+
+        if (outExt == "ico")
+            return buildIcoCmd(job);
 
         Defaults def = defaultsFor(outExt);
 

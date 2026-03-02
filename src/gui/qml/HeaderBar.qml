@@ -43,27 +43,14 @@ Item {
         anchors.rightMargin: 16
         spacing: 0
 
-        // Emblem
+        // Horizontal wordmark (emblem + logotype baked into one crisp image)
         Image {
-            source: "qrc:/icons/emblem.png"
-            Layout.preferredWidth: 28
-            Layout.preferredHeight: 28
-            Layout.maximumWidth: 28
-            Layout.maximumHeight: 28
+            source: "qrc:/icons/horizontal.png"
+            Layout.preferredHeight: 26
+            Layout.preferredWidth: implicitWidth * (26 / implicitHeight)
             fillMode: Image.PreserveAspectFit
             smooth: true
-        }
-
-        Item { width: 10 }
-
-        // Logo / wordmark
-        Text {
-            text: "anyfile"
-            font.pixelSize: 18
-            font.bold: true
-            font.letterSpacing: 1
-            color: root.textPrim
-            font.family: root.appFont
+            antialiasing: true
         }
 
         Item { Layout.fillWidth: true }

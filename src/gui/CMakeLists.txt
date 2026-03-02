@@ -15,6 +15,7 @@ qt_standard_project_setup()
 # ── GUI executable ────────────────────────────────────────────────────────────
 qt_add_executable(anyfile_gui
     main_gui.cpp
+    resources/app.rc
 )
 
 # ── Embed icons and other static resources ───────────────────────────────────
@@ -23,7 +24,9 @@ qt_add_resources(anyfile_gui "gui_resources"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/resources"
     FILES
         resources/icons/app.png
+        resources/icons/app.ico
         resources/icons/emblem.png
+        resources/icons/horizontal.png
         resources/fonts/Manrope-Regular.ttf
 )
 

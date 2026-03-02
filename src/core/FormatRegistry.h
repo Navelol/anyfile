@@ -164,17 +164,18 @@ private:
 
         // ── Conversion target map ─────────────────────────────────────────────
         // Images
-        targets("png",  {"jpg","webp","bmp","tiff","gif","avif","tga"});
-        targets("jpg",  {"png","webp","bmp","tiff","gif","avif"});
-        targets("jpeg", {"png","webp","bmp","tiff","gif","avif"});
-        targets("webp", {"png","jpg","bmp","tiff","gif"});
-        targets("bmp",  {"png","jpg","webp","tiff"});
-        targets("tiff", {"png","jpg","webp","bmp"});
+        targets("png",  {"jpg","webp","bmp","tiff","gif","avif","tga","ico"});
+        targets("jpg",  {"png","webp","bmp","tiff","gif","avif","ico"});
+        targets("jpeg", {"png","webp","bmp","tiff","gif","avif","ico"});
+        targets("webp", {"png","jpg","bmp","tiff","gif","ico"});
+        targets("bmp",  {"png","jpg","webp","tiff","ico"});
+        targets("tiff", {"png","jpg","webp","bmp","ico"});
         targets("gif",  {"png","jpg","webp","mp4","webm"});
-        targets("heic", {"png","jpg","webp"});
-        targets("avif", {"png","jpg","webp"});
-        targets("tga",  {"png","jpg","webp","bmp"});
-        targets("svg",  {"png","jpg","webp"});
+        targets("heic", {"png","jpg","webp","ico"});
+        targets("avif", {"png","jpg","webp","ico"});
+        targets("ico",  {"png","jpg","webp","bmp","tiff","gif"});
+        targets("tga",  {"png","jpg","webp","bmp","ico"});
+        targets("svg",  {"png","jpg","webp","ico"});
         targets("raw",  {"jpg","png","tiff","webp"});
         targets("cr2",  {"jpg","png","tiff","webp"});
         targets("nef",  {"jpg","png","tiff","webp"});
