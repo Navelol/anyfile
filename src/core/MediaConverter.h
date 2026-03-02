@@ -1,32 +1,21 @@
 #pragma once
 
 #include "Types.h"
-#include <cstdlib>
+#include "Process.h"
 #include <chrono>
 #include <sstream>
 
 namespace converter {
 
 class MediaConverter {
-private:
-#ifdef _WIN32
-    static constexpr const char* DEVNULL = "2>NUL";
-    static constexpr const char* AND_CMD = " & ";
-    static constexpr const char* RM_CMD  = "del /f /q ";
-#else
-    static constexpr const char* DEVNULL = "2>/dev/null";
-    static constexpr const char* AND_CMD = " && ";
-    static constexpr const char* RM_CMD  = "rm -f ";
-#endif
-
 public:
     static ConversionResult convert(const ConversionJob& job) {
         auto start = std::chrono::steady_clock::now();
 
         if (job.onProgress) job.onProgress(0.1f, "Converting...");
 
-        std::string cmd = buildFFmpegCmd(job);
-        int ret = std::system(cmd.c_str());
+        auto args = buildFFmpegArgs(job);
+        int ret = Process::run("ffmpeg", args);
 
         if (ret != 0)
             return ConversionResult::err("FFmpeg conversion failed");
@@ -45,7 +34,6 @@ public:
     }
 
 private:
-    // ── Sensible defaults per output format ──────────────────────────────────
     struct Defaults {
         std::string videoCodec;
         std::string audioCodec;
@@ -73,109 +61,154 @@ private:
         if (outExt == "flac") return { "", "flac",       "", -1 };
         if (outExt == "wav")  return { "", "pcm_s16le",  "", -1 };
         if (outExt == "m4a")  return { "", "aac",        "", -1 };
-        if (outExt == "png")  return { "", "", "", -1 };
-        if (outExt == "jpg" || outExt == "jpeg") return { "", "", "", -1 };
-        if (outExt == "webp") return { "", "", "", -1 };
         return { "", "", "", -1 };
     }
 
-    // ── ICO — multi-resolution Windows icon (256, 48, 32, 16 px) ──────────────
-    static std::string buildIcoCmd(const ConversionJob& job) {
-        // Generate a proper 4-size ICO: 256, 48, 32, 16
-        std::ostringstream cmd;
-        cmd << "ffmpeg -y -i \"" << job.inputPath.string() << "\""
-            << " -filter_complex"
-            << " \"[0:v]scale=256:256:flags=lanczos[s256]"
-            << ";[0:v]scale=48:48:flags=lanczos[s48]"
-            << ";[0:v]scale=32:32:flags=lanczos[s32]"
-            << ";[0:v]scale=16:16:flags=lanczos[s16]\""
-            << " -map \"[s256]\" -map \"[s48]\" -map \"[s32]\" -map \"[s16]\""
-            << " \"" << job.outputPath.string() << "\" " << DEVNULL;
-        return cmd.str();
+    // ── ICO ───────────────────────────────────────────────────────────────────
+    static std::vector<std::string> buildIcoArgs(const ConversionJob& job) {
+        return {
+            "-y", "-i", job.inputPath.string(),
+            "-filter_complex",
+            "[0:v]scale=256:256:flags=lanczos[s256]"
+            ";[0:v]scale=48:48:flags=lanczos[s48]"
+            ";[0:v]scale=32:32:flags=lanczos[s32]"
+            ";[0:v]scale=16:16:flags=lanczos[s16]",
+            "-map", "[s256]", "-map", "[s48]", "-map", "[s32]", "-map", "[s16]",
+            job.outputPath.string()
+        };
     }
 
-    // ── GIF gets special treatment — two-pass palettegen ─────────────────────
-    static std::string buildGifCmd(const ConversionJob& job) {
+    // ── GIF: two-pass palettegen ───────────────────────────────────────────────
+    // Two-pass GIF can't be a single Process::run call.
+    // We run pass1 and pass2 sequentially.
+    static ConversionResult convertGif(const ConversionJob& job) {
         std::string scaleFilter;
         if (job.resolution) {
-            std::string res = *job.resolution;
-            auto x = res.find('x');
+            auto x = job.resolution->find('x');
             if (x != std::string::npos)
-                scaleFilter = "scale=" + res.substr(0, x) + ":" + res.substr(x + 1) + ",";
+                scaleFilter = "scale=" + job.resolution->substr(0, x)
+                            + ":" + job.resolution->substr(x + 1) + ",";
         }
-
         std::string fpsFilter;
         if (job.framerate)
             fpsFilter = "fps=" + *job.framerate + ",";
 
         std::string filters = fpsFilter + scaleFilter;
 
-        fs::path palette = fs::temp_directory_path() / ("everyfile_palette_" +
+        fs::path palette = fs::temp_directory_path() / ("anyfile_palette_" +
             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".png");
 
-        std::string pass1 =
-            "ffmpeg -y -i \"" + job.inputPath.string() + "\""
-            " -vf \"" + filters + "palettegen\""
-            " \"" + palette.string() + "\" " + DEVNULL;
+        // Pass 1 — generate palette
+        std::vector<std::string> pass1 = {
+            "-y", "-i", job.inputPath.string(),
+            "-vf", filters + "palettegen",
+            palette.string()
+        };
+        if (Process::run("ffmpeg", pass1) != 0) {
+            fs::remove(palette);
+            return ConversionResult::err("FFmpeg GIF palette generation failed");
+        }
 
-        std::string pass2 =
-            "ffmpeg -y -i \"" + job.inputPath.string() + "\""
-            " -i \"" + palette.string() + "\""
-            " -lavfi \"" + filters + "paletteuse\""
-            " \"" + job.outputPath.string() + "\" " + DEVNULL +
-            AND_CMD + RM_CMD + "\"" + palette.string() + "\"";
+        // Pass 2 — render with palette
+        std::vector<std::string> pass2 = {
+            "-y",
+            "-i", job.inputPath.string(),
+            "-i", palette.string(),
+            "-lavfi", filters + "paletteuse",
+            job.outputPath.string()
+        };
+        int ret = Process::run("ffmpeg", pass2);
+        fs::remove(palette);
 
-        return pass1 + AND_CMD + pass2;
+        if (ret != 0)
+            return ConversionResult::err("FFmpeg GIF render failed");
+
+        return ConversionResult::ok(job.outputPath);
     }
 
-    // ── Main command builder ──────────────────────────────────────────────────
-    static std::string buildFFmpegCmd(const ConversionJob& job) {
+    // ── Main args builder ─────────────────────────────────────────────────────
+    static std::vector<std::string> buildFFmpegArgs(const ConversionJob& job) {
         const std::string& outExt = job.outputFormat.ext;
-
-        if (outExt == "gif")
-            return buildGifCmd(job);
-
-        if (outExt == "ico")
-            return buildIcoCmd(job);
 
         Defaults def = defaultsFor(outExt);
 
-        auto resolve = [](const std::optional<std::string>& override,
-                          const std::string& def) -> std::string {
-            if (override) return *override;
-            return def;
+        auto resolve = [](const std::optional<std::string>& ov,
+                          const std::string& d) -> std::string {
+            return ov ? *ov : d;
         };
 
-        std::string vcodec = resolve(job.videoCodec,   def.videoCodec);
-        std::string acodec = resolve(job.audioCodec,   def.audioCodec);
-        std::string pix    = resolve(job.pixelFormat,  def.pixelFormat);
+        std::string vcodec = resolve(job.videoCodec,  def.videoCodec);
+        std::string acodec = resolve(job.audioCodec,  def.audioCodec);
+        std::string pix    = resolve(job.pixelFormat, def.pixelFormat);
         int         crf    = job.crf ? *job.crf : def.crf;
 
-        std::ostringstream cmd;
-        cmd << "ffmpeg -y -i \"" << job.inputPath.string() << "\"";
+        std::vector<std::string> args;
+        args.push_back("-y");
+        args.push_back("-i");
+        args.push_back(job.inputPath.string());
 
-        if (!vcodec.empty())  cmd << " -c:v " << vcodec;
-        if (!vcodec.empty() && (outExt == "mp4" || outExt == "mkv" || outExt == "mov")) cmd << " -preset slow";
-        if (!acodec.empty())  cmd << " -c:a " << acodec;
-        if (crf >= 0)         cmd << " -crf " << crf;
-        if (!pix.empty())     cmd << " -pix_fmt " << pix;
-        if (job.videoBitrate) cmd << " -b:v " << *job.videoBitrate;
-        if (job.audioBitrate) cmd << " -b:a " << *job.audioBitrate;
-        else if (!acodec.empty()) cmd << " -b:a 320k";
+        if (!vcodec.empty()) { args.push_back("-c:v"); args.push_back(vcodec); }
+        if (!vcodec.empty() && (outExt == "mp4" || outExt == "mkv" || outExt == "mov")) {
+            args.push_back("-preset"); args.push_back("slow");
+        }
+        if (!acodec.empty()) { args.push_back("-c:a"); args.push_back(acodec); }
+        if (crf >= 0)        { args.push_back("-crf"); args.push_back(std::to_string(crf)); }
+        if (!pix.empty())    { args.push_back("-pix_fmt"); args.push_back(pix); }
+
+        if (job.videoBitrate) { args.push_back("-b:v"); args.push_back(*job.videoBitrate); }
+        if (job.audioBitrate) { args.push_back("-b:a"); args.push_back(*job.audioBitrate); }
+        else if (!acodec.empty()) { args.push_back("-b:a"); args.push_back("320k"); }
 
         if (job.resolution) {
-            std::string res = *job.resolution;
-            auto x = res.find('x');
-            if (x != std::string::npos)
-                cmd << " -vf scale=" << res.substr(0, x) << ":" << res.substr(x + 1);
+            auto x = job.resolution->find('x');
+            if (x != std::string::npos) {
+                args.push_back("-vf");
+                args.push_back("scale=" + job.resolution->substr(0, x)
+                              + ":" + job.resolution->substr(x + 1));
+            }
         }
 
-        if (job.framerate)
-            cmd << " -r " << *job.framerate;
+        if (job.framerate) { args.push_back("-r"); args.push_back(*job.framerate); }
 
-        cmd << " \"" << job.outputPath.string() << "\" " << DEVNULL;
+        args.push_back(job.outputPath.string());
+        return args;
+    }
 
-        return cmd.str();
+public:
+    // Re-expose convert so GIF can return early with a full ConversionResult
+    static ConversionResult convertDispatch(const ConversionJob& job) {
+        const std::string& outExt = job.outputFormat.ext;
+
+        auto start = std::chrono::steady_clock::now();
+        if (job.onProgress) job.onProgress(0.1f, "Converting...");
+
+        ConversionResult result;
+        if (outExt == "gif") {
+            result = convertGif(job);
+        } else {
+            std::vector<std::string> args;
+            if (outExt == "ico")
+                args = buildIcoArgs(job);
+            else
+                args = buildFFmpegArgs(job);
+
+            int ret = Process::run("ffmpeg", args);
+            result = (ret == 0)
+                ? ConversionResult::ok(job.outputPath)
+                : ConversionResult::err("FFmpeg conversion failed");
+        }
+
+        if (!result.success) return result;
+
+        if (job.onProgress) job.onProgress(1.0f, "Done");
+
+        auto end = std::chrono::steady_clock::now();
+        result.durationSeconds = std::chrono::duration<double>(end - start).count();
+        result.inputBytes      = fs::file_size(job.inputPath);
+        if (fs::exists(job.outputPath))
+            result.outputBytes = fs::file_size(job.outputPath);
+
+        return result;
     }
 };
 
