@@ -3,6 +3,17 @@
 #include "Types.h"
 #include <unordered_map>
 #include <unordered_set>
+#include <fstream>
+#include <cstring>
+
+// libmagic — optional but strongly recommended.
+// Install: sudo apt install libmagic-dev  /  choco install file  (Windows via MSYS2)
+#if __has_include(<magic.h>)
+#  include <magic.h>
+#  define ANYFILE_HAS_LIBMAGIC 1
+#else
+#  define ANYFILE_HAS_LIBMAGIC 0
+#endif
 
 namespace converter {
 
@@ -13,14 +24,29 @@ public:
         return reg;
     }
 
-    // Detect format from file extension
+    // ── detect() ─────────────────────────────────────────────────────────────
+    // For files that exist on disk: tries magic-number detection first,
+    // falls back to extension if magic is inconclusive.
+    // For output paths (file doesn't exist yet): extension only.
     std::optional<Format> detect(const fs::path& path) const {
+        if (fs::exists(path)) {
+            // 1. Try magic-number detection
+            auto byMagic = detectByMagic(path);
+            if (byMagic) return byMagic;
+
+            // 2. Fall back to extension
+        }
+        return detectByExtension(path);
+    }
+
+    // ── detectByExtension() ──────────────────────────────────────────────────
+    // Public so callers can force extension-only lookup (e.g. for output paths).
+    std::optional<Format> detectByExtension(const fs::path& path) const {
         auto ext = path.extension().string();
         if (ext.empty()) return std::nullopt;
 
-        // strip the dot, lowercase
         std::string key = ext.substr(1);
-        for (auto& c : key) c = std::tolower(c);
+        for (auto& c : key) c = std::tolower((unsigned char)c);
 
         auto it = m_map.find(key);
         if (it == m_map.end()) return std::nullopt;
@@ -43,6 +69,156 @@ public:
 private:
     FormatRegistry() { buildRegistry(); }
 
+    // ── Magic-number detection ────────────────────────────────────────────────
+    std::optional<Format> detectByMagic(const fs::path& path) const {
+#if ANYFILE_HAS_LIBMAGIC
+        // magic_open / magic_load are cheap — the database is loaded once and
+        // the cookie is used for a single call then closed.
+        // For a long-running app you'd want to cache the cookie; here we keep
+        // it simple and correct (thread-safe: each call owns its cookie).
+        magic_t cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
+        if (!cookie) return std::nullopt;
+
+        if (magic_load(cookie, nullptr) != 0) {
+            magic_close(cookie);
+            return std::nullopt;
+        }
+
+        const char* mime = magic_file(cookie, path.string().c_str());
+        std::optional<Format> result;
+        if (mime) {
+            result = mimeToFormat(std::string(mime));
+        }
+        magic_close(cookie);
+        return result;
+#else
+        // ── Fallback: hand-rolled magic bytes (covers common formats) ─────────
+        // Used when libmagic isn't available (e.g. bare Windows build without MSYS2 file pkg).
+        return detectByBytes(path);
+#endif
+    }
+
+    // ── Hand-rolled byte sniffer (libmagic fallback) ──────────────────────────
+    // Covers the formats most likely to be misnamed or extensionless.
+    static std::optional<Format> detectByBytes(const fs::path& path) {
+        std::ifstream f(path, std::ios::binary);
+        if (!f) return std::nullopt;
+
+        unsigned char buf[32] = {};
+        f.read(reinterpret_cast<char*>(buf), sizeof(buf));
+        auto n = static_cast<size_t>(f.gcount());
+        if (n < 4) return std::nullopt;
+
+        // ── Archives ──────────────────────────────────────────────────────────
+        if (buf[0]=='P' && buf[1]=='K' && buf[2]==0x03 && buf[3]==0x04)
+            return fmt("zip", Category::Archive, "application/zip");
+        if (buf[0]==0x1F && buf[1]==0x8B)
+            return fmt("gz",  Category::Archive, "application/gzip");
+        if (buf[0]=='B' && buf[1]=='Z' && buf[2]=='h')
+            return fmt("bz2", Category::Archive, "application/x-bzip2");
+        if (buf[0]==0xFD && buf[1]=='7' && buf[2]=='z' && buf[3]=='X' && buf[4]=='Z')
+            return fmt("xz",  Category::Archive, "application/x-xz");
+        if (buf[0]=='7' && buf[1]=='z' && buf[2]==0xBC && buf[3]==0xAF)
+            return fmt("7z",  Category::Archive, "application/x-7z-compressed");
+        if (buf[0]==0x28 && buf[1]==0xB5 && buf[2]==0x2F && buf[3]==0xFD)
+            return fmt("zst", Category::Archive, "application/zstd");
+        if (buf[0]=='R' && buf[1]=='a' && buf[2]=='r' && buf[3]=='!')
+            return fmt("rar", Category::Archive, "application/x-rar-compressed");
+        // tar: check ustar signature at offset 257
+        {
+            std::ifstream tf(path, std::ios::binary);
+            unsigned char tbuf[512] = {};
+            tf.read(reinterpret_cast<char*>(tbuf), 512);
+            if (tf.gcount() >= 262 &&
+                tbuf[257]=='u' && tbuf[258]=='s' && tbuf[259]=='t' && tbuf[260]=='a' && tbuf[261]=='r')
+                return fmt("tar", Category::Archive, "application/x-tar");
+        }
+
+        // ── Images ────────────────────────────────────────────────────────────
+        if (buf[0]==0x89 && buf[1]=='P' && buf[2]=='N' && buf[3]=='G')
+            return fmt("png",  Category::Image, "image/png");
+        if (buf[0]==0xFF && buf[1]==0xD8 && buf[2]==0xFF)
+            return fmt("jpg",  Category::Image, "image/jpeg");
+        if (buf[0]=='G' && buf[1]=='I' && buf[2]=='F')
+            return fmt("gif",  Category::Image, "image/gif");
+        if (buf[0]=='R' && buf[1]=='I' && buf[2]=='F' && buf[3]=='F' && n>=12 &&
+            buf[8]=='W' && buf[9]=='E' && buf[10]=='B' && buf[11]=='P')
+            return fmt("webp", Category::Image, "image/webp");
+        if (buf[0]=='B' && buf[1]=='M')
+            return fmt("bmp",  Category::Image, "image/bmp");
+        if ((buf[0]=='I' && buf[1]=='I' && buf[2]==0x2A && buf[3]==0x00) ||
+            (buf[0]=='M' && buf[1]=='M' && buf[2]==0x00 && buf[3]==0x2A))
+            return fmt("tiff", Category::Image, "image/tiff");
+        if (n>=12 && buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x01 && buf[3]==0x00)
+            return fmt("ico",  Category::Image, "image/x-icon");
+
+        // ── Video / Audio ─────────────────────────────────────────────────────
+        // MP4/M4A/MOV — ftyp box
+        if (n>=8 && buf[4]=='f' && buf[5]=='t' && buf[6]=='y' && buf[7]=='p') {
+            // sub-brand at byte 8
+            if (n>=12) {
+                std::string brand(reinterpret_cast<char*>(buf+8), 4);
+                if (brand=="qt  ") return fmt("mov", Category::Video, "video/quicktime");
+                if (brand=="M4A ") return fmt("m4a", Category::Audio, "audio/mp4");
+                if (brand=="M4V ") return fmt("m4v", Category::Video, "video/x-m4v");
+            }
+            return fmt("mp4", Category::Video, "video/mp4");
+        }
+        if (buf[0]==0x1A && buf[1]==0x45 && buf[2]==0xDF && buf[3]==0xA3)
+            return fmt("mkv", Category::Video, "video/x-matroska"); // also webm — close enough
+        if (buf[0]=='R' && buf[1]=='I' && buf[2]=='F' && buf[3]=='F' && n>=12 &&
+            buf[8]=='A' && buf[9]=='V' && buf[10]=='I' && buf[11]==' ')
+            return fmt("avi", Category::Video, "video/x-msvideo");
+        if (buf[0]=='R' && buf[1]=='I' && buf[2]=='F' && buf[3]=='F' && n>=12 &&
+            buf[8]=='W' && buf[9]=='A' && buf[10]=='V' && buf[11]=='E')
+            return fmt("wav", Category::Audio, "audio/wav");
+        if (buf[0]=='I' && buf[1]=='D' && buf[2]=='3')
+            return fmt("mp3", Category::Audio, "audio/mpeg");
+        if (buf[0]==0xFF && (buf[1]&0xE0)==0xE0)  // MPEG sync
+            return fmt("mp3", Category::Audio, "audio/mpeg");
+        if (buf[0]=='f' && buf[1]=='L' && buf[2]=='a' && buf[3]=='C')
+            return fmt("flac", Category::Audio, "audio/flac");
+        if (buf[0]=='O' && buf[1]=='g' && buf[2]=='g' && buf[3]=='S')
+            return fmt("ogg", Category::Audio, "audio/ogg");
+
+        // ── Documents ─────────────────────────────────────────────────────────
+        if (buf[0]=='%' && buf[1]=='P' && buf[2]=='D' && buf[3]=='F')
+            return fmt("pdf", Category::Document, "application/pdf");
+        // Office Open XML (.docx/.xlsx/.pptx are zip-based — already caught by PK above,
+        // but if someone passed the right file we can't distinguish without reading more.
+        // Leave to extension fallback for OOXML.)
+
+        // ── 3D ────────────────────────────────────────────────────────────────
+        // GLB
+        if (buf[0]==0x67 && buf[1]==0x6C && buf[2]==0x54 && buf[3]==0x46)
+            return fmt("glb", Category::Model3D, "model/gltf-binary");
+
+        // ── Data ──────────────────────────────────────────────────────────────
+        if (buf[0]=='{')
+            return fmt("json", Category::Data, "application/json");
+        if (buf[0]=='<')
+            return fmt("xml",  Category::Data, "application/xml");
+
+        return std::nullopt;  // inconclusive — caller will try extension
+    }
+
+    // ── MIME → Format (used by libmagic path) ─────────────────────────────────
+    std::optional<Format> mimeToFormat(const std::string& mime) const {
+        // Strip parameters like "text/html; charset=utf-8"
+        std::string m = mime.substr(0, mime.find(';'));
+        while (!m.empty() && m.back() == ' ') m.pop_back();
+
+        auto it = m_mimeMap.find(m);
+        if (it != m_mimeMap.end()) return it->second;
+        return std::nullopt;
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+    static Format fmt(const std::string& ext, Category cat, const std::string& mime) {
+        return { ext, cat, mime };
+    }
+
+    // ── Registry builder ──────────────────────────────────────────────────────
     void buildRegistry() {
         // ── Images ───────────────────────────────────────────────────────────
         reg("png",  Category::Image, "image/png");
@@ -132,7 +308,7 @@ private:
         reg("ini",  Category::Data, "text/x-ini");
         reg("env",  Category::Data, "text/x-dotenv");
 
-        // ── Documents ─────────────────────────────────────────────────────────────
+        // ── Documents ─────────────────────────────────────────────────────────
         reg("pdf",  Category::Document, "application/pdf");
         reg("docx", Category::Document, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         reg("doc",  Category::Document, "application/msword");
@@ -153,7 +329,7 @@ private:
         reg("tex",      Category::Document, "application/x-tex");
         reg("latex",    Category::Document, "application/x-latex");
 
-        // ── Ebooks ────────────────────────────────────────────────────────────────
+        // ── Ebooks ────────────────────────────────────────────────────────────
         reg("epub", Category::Ebook, "application/epub+zip");
         reg("mobi", Category::Ebook, "application/x-mobipocket-ebook");
         reg("azw3", Category::Ebook, "application/vnd.amazon.ebook");
@@ -161,6 +337,13 @@ private:
         reg("fb2",  Category::Ebook, "application/x-fictionbook");
         reg("djvu", Category::Ebook, "image/vnd.djvu");
         reg("lit",  Category::Ebook, "application/x-ms-reader");
+
+        // ── Build MIME → Format reverse map ──────────────────────────────────
+        // (preferred canonical ext per MIME — first one registered wins)
+        for (auto& [ext, f] : m_map) {
+            if (!m_mimeMap.count(f.mimeType))
+                m_mimeMap[f.mimeType] = f;
+        }
 
         // ── Conversion target map ─────────────────────────────────────────────
         // Images
@@ -278,7 +461,8 @@ private:
         for (auto& t : tos) m_targets[from].insert(t);
     }
 
-    std::unordered_map<std::string, Format>                     m_map;
+    std::unordered_map<std::string, Format>                          m_map;
+    std::unordered_map<std::string, Format>                          m_mimeMap;   // MIME → Format
     std::unordered_map<std::string, std::unordered_set<std::string>> m_targets;
 };
 

@@ -21,3 +21,12 @@ target_link_libraries(converter_core PUBLIC
     nlohmann_json::nlohmann_json
     LibArchive::LibArchive
 )
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MAGIC libmagic)
+
+if(MAGIC_FOUND)
+    target_compile_definitions(converter_core PRIVATE)  # __has_include handles it
+    target_include_directories(converter_core PRIVATE ${MAGIC_INCLUDE_DIRS})
+    target_link_libraries(converter_core PUBLIC ${MAGIC_LIBRARIES})
+endif()
