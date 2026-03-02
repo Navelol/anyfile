@@ -1,3 +1,9 @@
 [submodule "thirdparty/nlohmann-json"]
 	path = thirdparty/nlohmann-json
 	url = https://github.com/nlohmann/json.git
+[submodule "thirdparty/openfbx"]
+	path = thirdparty/openfbx
+	url = https://github.com/nem0/OpenFBX.git
+[submodule "thirdparty/tinygltf"]
+	path = thirdparty/tinygltf
+	url = https://github.com/syoyo/tinygltf.git
