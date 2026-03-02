@@ -47,6 +47,14 @@ public slots:
             emit fileStarted(i, total,
                 QString::fromStdString(jobs[i].inputPath.filename().string()));
 
+            // Skip if output exists and force is not set
+            if (!jobs[i].force && fs::exists(jobs[i].outputPath)) {
+                emit fileCompleted(i + 1, total,
+                    QString::fromStdString(jobs[i].inputPath.filename().string()),
+                    false, "file exists (use force overwrite to replace)");
+                continue;
+            }
+
             auto result = Dispatcher::dispatch(jobs[i]);
 
             if (result.success) {
@@ -206,6 +214,11 @@ public:
         return result;
     }
 
+    // ── Check if a file path already exists on disk ─────────────────────────
+    Q_INVOKABLE bool fileExists(const QString& path) const {
+        return fs::exists(fs::path(path.toStdString()));
+    }
+
     // ── Strip file:// prefix from URL ─────────────────────────────────────────
     Q_INVOKABLE QString urlToPath(const QString& url) const {
         if (url.startsWith("file://"))
@@ -241,10 +254,29 @@ public:
         return result;
     }
 
-    // ── Batch convert a list of files to a target extension ───────────────────
+    // ── Check which output files would already exist (for overwrite dialog) ────
+    Q_INVOKABLE QStringList wouldOverwrite(
+        const QStringList& inputPaths,
+        const QStringList& targetExts,
+        const QString& outputDir) const
+    {
+        QStringList result;
+        for (int i = 0; i < inputPaths.size() && i < targetExts.size(); ++i) {
+            fs::path inp(inputPaths[i].toStdString());
+            fs::path outDir = outputDir.isEmpty()
+                ? inp.parent_path()
+                : fs::path(outputDir.toStdString());
+            fs::path out = outDir / (inp.stem().string() + "." + targetExts[i].toStdString());
+            if (fs::exists(out))
+                result << QString::fromStdString(out.string());
+        }
+        return result;
+    }
+
+    // ── Batch convert a list of files with per-file target extensions ──────────
     Q_INVOKABLE void convertBatch(
         const QStringList& inputPaths,
-        const QString& targetExt,
+        const QStringList& targetExts,
         const QString& outputDir,
         const QVariantMap& options = {})
     {
@@ -260,16 +292,21 @@ public:
         emit batchTotalChanged();
         emit batchDoneChanged();
 
+        const bool forceOverwrite = options.value("force", false).toBool();
+
         QList<ConversionJob> jobs;
         jobs.reserve(inputPaths.size());
-        for (const auto& inPath : inputPaths) {
+        for (int i = 0; i < inputPaths.size(); ++i) {
+            const QString& inPath  = inputPaths[i];
+            const QString  tgtExt  = (i < targetExts.size()) ? targetExts[i] : (targetExts.isEmpty() ? "" : targetExts.last());
             ConversionJob job;
             job.inputPath = fs::path(inPath.toStdString());
             fs::path outDir = outputDir.isEmpty()
                 ? job.inputPath.parent_path()
                 : fs::path(outputDir.toStdString());
             if (!outDir.empty()) fs::create_directories(outDir);
-            job.outputPath = outDir / (job.inputPath.stem().string() + "." + targetExt.toStdString());
+            job.outputPath = outDir / (job.inputPath.stem().string() + "." + tgtExt.toStdString());
+            job.force = forceOverwrite;
             applyOptions(job, options);
             jobs << std::move(job);
         }
@@ -352,6 +389,7 @@ private:
         job.resolution   = getStr("resolution");
         job.framerate    = getStr("framerate");
         job.pixelFormat  = getStr("pixelFormat");
+        if (opts.contains("force")) job.force = opts.value("force").toBool();
 
         if (opts.contains("crf")) {
             bool ok;

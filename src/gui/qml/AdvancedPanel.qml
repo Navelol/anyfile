@@ -14,6 +14,7 @@ Column {
     property string resolution:   ""
     property string framerate:    ""
     property string crfValue:     ""
+    property bool   forceOverwrite: false
 
     // Expand/collapse toggle
     Item {
@@ -129,6 +130,45 @@ Column {
                                 visible: parent.text.length === 0 && !parent.activeFocus
                             }
                         }
+                    }
+                }
+            }
+
+            // Force overwrite toggle (spans 1 column, sits naturally in the grid)
+            ColumnLayout {
+                spacing: 4
+                Text {
+                    text: "Force Overwrite"
+                    font.pixelSize: 10
+                    font.family: root.appFont
+                    color: root.textDim
+                    font.letterSpacing: 0.5
+                }
+                Rectangle {
+                    width: 170; height: 28; radius: 7
+                    color: adv.forceOverwrite ? "#3a2020" : root.surfaceHi
+                    border.color: adv.forceOverwrite ? root.errorClr : root.border
+                    border.width: 1
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 7
+                        Rectangle {
+                            width: 12; height: 12; radius: 3
+                            color: adv.forceOverwrite ? root.errorClr : "transparent"
+                            border.color: adv.forceOverwrite ? root.errorClr : root.textDim
+                            border.width: 1.5
+                            Behavior on color { ColorAnimation { duration: 80 } }
+                        }
+                        Text {
+                            text: adv.forceOverwrite ? "on — files will be replaced" : "off — ask before replacing"
+                            font.pixelSize: 11; font.family: root.appFont
+                            color: adv.forceOverwrite ? root.errorClr : root.textDim
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: adv.forceOverwrite = !adv.forceOverwrite
                     }
                 }
             }

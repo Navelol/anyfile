@@ -74,6 +74,7 @@ struct ConversionJob {
     std::optional<std::string> framerate;     // e.g. "30", "60", "24"
     std::optional<int>         crf;           // e.g. 18 (lossless-ish) to 51 (terrible)
     std::optional<std::string> pixelFormat;   // e.g. "yuv420p", "yuv444p"
+    bool force = false;  // overwrite output if it already exists
 };
 
 } // namespace converter

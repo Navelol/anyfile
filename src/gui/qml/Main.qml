@@ -52,11 +52,9 @@ ApplicationWindow {
         anchors.fill: parent
         keys: ["text/uri-list"]
         onDropped: function(drop) {
-            if (drop.urls.length > 0) {
-                let path = bridge.urlToPath(drop.urls[0].toString())
-                filePanel.setInputFile(path)
-                dropOverlay.visible = false
-            }
+            for (var i = 0; i < drop.urls.length; i++)
+                filePanel.addFile(bridge.urlToPath(drop.urls[i].toString()))
+            dropOverlay.visible = false
         }
         onEntered: dropOverlay.visible = true
         onExited:  dropOverlay.visible = false
@@ -83,7 +81,7 @@ ApplicationWindow {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Drop file to convert"
+                text: "Drop files to add"
                 font.pixelSize: 18
                 font.family: root.appFont
                 color: root.textPrim
@@ -132,7 +130,7 @@ ApplicationWindow {
                 ResultPanel {
                     id: resultPanel
                     Layout.fillWidth: true
-                    visible: filePanel.mode === 0
+                    visible: false
                 }
 
                 ProgressBar2 {

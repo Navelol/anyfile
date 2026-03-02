@@ -6,23 +6,15 @@ import QtQuick.Dialogs
 Item {
     id: panel
 
-    // ── Exposed mode so Main.qml can hide ResultPanel in batch/folder modes ───
-    property int mode: 0  // 0 = single, 1 = batch, 2 = folder
+    // mode: 0 = files/batch, 1 = folder
+    property int mode: 0
 
-    // ── Single mode state ─────────────────────────────────────────────────────
-    property string singleInput:   ""
-    property string singleOutput:  ""
-    property string singleInExt:   ""
-    property string singleOutExt:  ""
-    property var    singleFormats: []
+    // -- Batch model -----------------------------------------------------------
+    // Each row: { filePath, enabled, sourceExt, targetExt }
+    ListModel { id: batchModel }
+    property string overrideExt: ""   // if set, all enabled rows use this
 
-    // ── Batch mode state ──────────────────────────────────────────────────────
-    property var    batchFiles:   []
-    property string batchOutExt:  ""
-    property string batchOutDir:  ""
-    property bool   batchSameDir: true
-
-    // ── Folder mode state ─────────────────────────────────────────────────────
+    // -- Folder mode state -----------------------------------------------------
     property string folderPath:    ""
     property var    folderFiles:   []
     property string folderOutExt:  ""
@@ -30,22 +22,57 @@ Item {
     property bool   folderSameDir: true
     property bool   folderRecurse: true
 
-    // ── Batch results (shared between batch + folder modes) ───────────────────
+    // -- Results model (shared batch + folder) ---------------------------------
     ListModel { id: batchResults }
 
     Connections {
         target: bridge
         function onBatchFileCompleted(done, total, filename, success, detail) {
-            batchResults.append({ "filename": filename, "success": success, "detail": detail })
+            batchResults.append({ filename: filename, success: success, detail: detail })
             if (batchList.count > 0) batchList.positionViewAtEnd()
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    function batchFormats() {
+    // -- Helpers ---------------------------------------------------------------
+    function addFile(path) {
+        var ext = bridge.detectFormat(path)
+        if (ext === "") return
+        for (var i = 0; i < batchModel.count; i++)
+            if (batchModel.get(i).filePath === path) return
+        var fmts = bridge.formatsFor(path)
+        var tgt  = fmts.length > 0 ? fmts[0] : ""
+        batchModel.append({ filePath: path, enabled: true, sourceExt: ext, targetExt: tgt })
+    }
+
+    function effectiveTarget(index) {
+        if (overrideExt !== "") return overrideExt
+        return batchModel.get(index).targetExt
+    }
+
+    function enabledCount() {
+        var n = 0
+        for (var i = 0; i < batchModel.count; i++)
+            if (batchModel.get(i).enabled && effectiveTarget(i) !== "") n++
+        return n
+    }
+
+    function buildInputsAndTargets() {
+        var paths = [], exts = []
+        for (var i = 0; i < batchModel.count; i++) {
+            var item = batchModel.get(i)
+            if (!item.enabled) continue
+            var tgt = effectiveTarget(i)
+            if (tgt === "") continue
+            paths.push(item.filePath)
+            exts.push(tgt)
+        }
+        return { paths: paths, exts: exts }
+    }
+
+    function unionFormats() {
         var seen = {}, result = []
-        for (var i = 0; i < batchFiles.length; i++) {
-            var fmts = bridge.formatsFor(batchFiles[i])
+        for (var i = 0; i < batchModel.count; i++) {
+            var fmts = bridge.formatsFor(batchModel.get(i).filePath)
             for (var j = 0; j < fmts.length; j++)
                 if (!seen[fmts[j]]) { seen[fmts[j]] = true; result.push(fmts[j]) }
         }
@@ -62,34 +89,6 @@ Item {
         return result.sort()
     }
 
-    function setInputFile(path) {
-        singleInput   = path
-        singleInExt   = bridge.detectFormat(path)
-        singleFormats = bridge.formatsFor(path)
-        singleOutExt  = singleFormats.length > 0 ? singleFormats[0] : ""
-        singleOutput  = singleOutExt.length > 0
-            ? bridge.suggestOutputPath(path, singleOutExt) : ""
-        resultPanel.hide()
-    }
-
-    function doConvert() {
-        if (bridge.converting) return
-        if (mode === 0) {
-            if (!singleInput || !singleOutput) return
-            bridge.convertFile(singleInput, singleOutput, buildOptions())
-        } else if (mode === 1) {
-            if (batchFiles.length === 0 || !batchOutExt) return
-            batchResults.clear()
-            bridge.convertBatch(batchFiles, batchOutExt,
-                                batchSameDir ? "" : batchOutDir, buildOptions())
-        } else {
-            if (!folderPath || !folderOutExt || folderFiles.length === 0) return
-            batchResults.clear()
-            bridge.convertBatch(folderFiles, folderOutExt,
-                                folderSameDir ? "" : folderOutDir, buildOptions())
-        }
-    }
-
     function buildOptions() {
         var opts = {}
         if (advPanel.videoCodec.length   > 0) opts["videoCodec"]   = advPanel.videoCodec
@@ -99,100 +98,177 @@ Item {
         if (advPanel.resolution.length   > 0) opts["resolution"]   = advPanel.resolution
         if (advPanel.framerate.length    > 0) opts["framerate"]    = advPanel.framerate
         if (advPanel.crfValue.length     > 0) opts["crf"]          = parseInt(advPanel.crfValue)
+        if (advPanel.forceOverwrite)          opts["force"]        = true
         return opts
     }
 
-    // ── Dialogs ───────────────────────────────────────────────────────────────
-    FileDialog {
-        id: singleInputPicker
-        title: "Select input file"
-        fileMode: FileDialog.OpenFile
-        onAccepted: panel.setInputFile(bridge.urlToPath(selectedFile.toString()))
-    }
-
-    FileDialog {
-        id: singleOutputPicker
-        title: "Save as"
-        fileMode: FileDialog.SaveFile
-        defaultSuffix: panel.singleOutExt
-        onAccepted: {
-            var path  = bridge.urlToPath(selectedFile.toString())
-            var slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
-            var dot   = path.lastIndexOf(".")
-            if (dot > slash) path = path.substring(0, dot)
-            panel.singleOutput = path + "." + panel.singleOutExt
+    function doConvert() {
+        if (bridge.converting) return
+        if (mode === 0) {
+            var bt = buildInputsAndTargets()
+            if (bt.paths.length === 0) return
+            if (!advPanel.forceOverwrite) {
+                var collisions = bridge.wouldOverwrite(bt.paths, bt.exts, "")
+                if (collisions.length > 0) {
+                    overwriteDialog.setup(collisions, bt.paths, bt.exts, "")
+                    overwriteDialog.open()
+                    return
+                }
+            }
+            batchResults.clear()
+            bridge.convertBatch(bt.paths, bt.exts, "", buildOptions())
+        } else {
+            if (!folderPath || !folderOutExt || folderFiles.length === 0) return
+            var fPaths = [], fExts = []
+            for (var i = 0; i < folderFiles.length; i++) {
+                fPaths.push(folderFiles[i]); fExts.push(folderOutExt)
+            }
+            var outDir = folderSameDir ? "" : folderOutDir
+            if (!advPanel.forceOverwrite) {
+                var fc = bridge.wouldOverwrite(fPaths, fExts, outDir)
+                if (fc.length > 0) {
+                    overwriteDialog.setup(fc, fPaths, fExts, outDir)
+                    overwriteDialog.open()
+                    return
+                }
+            }
+            batchResults.clear()
+            bridge.convertBatch(fPaths, fExts, outDir, buildOptions())
         }
     }
 
+    // -- Overwrite confirmation dialog -----------------------------------------
+    Dialog {
+        id: overwriteDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+
+        property var    _collisions: []
+        property var    _paths:      []
+        property var    _exts:       []
+        property string _outDir:     ""
+
+        function setup(col, paths, exts, outDir) {
+            _collisions = col; _paths = paths; _exts = exts; _outDir = outDir
+        }
+
+        background: Rectangle {
+            color: root.surface; radius: 12
+            border.color: root.border; border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+            width: 380
+
+            Text {
+                Layout.fillWidth: true
+                text: overwriteDialog._collisions.length + " file"
+                    + (overwriteDialog._collisions.length === 1 ? "" : "s") + " will be replaced:"
+                font.pixelSize: 13; font.family: root.appFont; color: root.textPrim; wrapMode: Text.Wrap
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                height: Math.min(overwriteDialog._collisions.length * 22, 110)
+                Column {
+                    spacing: 2
+                    Repeater {
+                        model: overwriteDialog._collisions
+                        Text {
+                            width: 360
+                            text: "- " + modelData.split("/").pop()
+                            font.pixelSize: 11; font.family: root.appFont
+                            color: root.textDim; elide: Text.ElideLeft
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                    width: dlgCnlLbl.implicitWidth + 24; height: 34; radius: 8
+                    color: dlgCnlMa.containsMouse ? root.border : root.surface
+                    border.color: root.border; border.width: 1
+                    Text { id: dlgCnlLbl; anchors.centerIn: parent; text: "cancel"
+                        font.pixelSize: 12; font.family: root.appFont; color: root.textMid }
+                    MouseArea { id: dlgCnlMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor; onClicked: overwriteDialog.close() }
+                }
+                Rectangle {
+                    width: dlgRplLbl.implicitWidth + 24; height: 34; radius: 8
+                    color: dlgRplMa.containsMouse ? "#d04040" : root.errorClr
+                    Behavior on color { ColorAnimation { duration: 80 } }
+                    Text { id: dlgRplLbl; anchors.centerIn: parent; text: "replace"
+                        font.pixelSize: 12; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
+                    MouseArea {
+                        id: dlgRplMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            overwriteDialog.close()
+                            batchResults.clear()
+                            var opts = panel.buildOptions()
+                            opts["force"] = true
+                            bridge.convertBatch(overwriteDialog._paths, overwriteDialog._exts,
+                                                overwriteDialog._outDir, opts)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -- Dialogs ---------------------------------------------------------------
     FileDialog {
         id: batchInputPicker
         title: "Select files"
         fileMode: FileDialog.OpenFiles
         onAccepted: {
-            var arr = panel.batchFiles.slice()
-            for (var i = 0; i < selectedFiles.length; i++) {
-                var p = bridge.urlToPath(selectedFiles[i].toString())
-                if (arr.indexOf(p) < 0) arr.push(p)
-            }
-            panel.batchFiles  = arr
-            panel.batchOutExt = ""
+            for (var i = 0; i < selectedFiles.length; i++)
+                panel.addFile(bridge.urlToPath(selectedFiles[i].toString()))
         }
     }
 
     FolderDialog {
-        id: batchOutDirPicker
-        title: "Choose output folder"
-        onAccepted: panel.batchOutDir = bridge.urlToPath(selectedFolder.toString())
-    }
-
-    FolderDialog {
         id: folderInputPicker
-        title: "Select folder to convert"
+        title: "Select folder"
         onAccepted: {
-            panel.folderPath  = bridge.urlToPath(selectedFolder.toString())
-            panel.folderFiles = bridge.scanFolder(panel.folderPath, panel.folderRecurse)
+            panel.folderPath   = bridge.urlToPath(selectedFolder.toString())
+            panel.folderFiles  = bridge.scanFolder(panel.folderPath, panel.folderRecurse)
             panel.folderOutExt = ""
         }
     }
 
     FolderDialog {
         id: folderOutDirPicker
-        title: "Choose output folder"
+        title: "Output folder"
         onAccepted: panel.folderOutDir = bridge.urlToPath(selectedFolder.toString())
     }
 
-    // ── Layout ────────────────────────────────────────────────────────────────
+    // -- Layout ----------------------------------------------------------------
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 20
-        spacing: 16
+        spacing: 14
 
-        // ── Mode tabs ─────────────────────────────────────────────────────────
+        // Mode tabs
         Row {
             spacing: 6
             Repeater {
-                model: ["single file", "batch", "folder"]
+                model: ["files", "folder"]
                 delegate: Rectangle {
-                    width: tabLbl.implicitWidth + 22
-                    height: 30
-                    radius: 8
-                    color: panel.mode === index
-                           ? root.accent
-                           : (tabMa.containsMouse ? root.border : root.surface)
+                    width: tabLbl.implicitWidth + 22; height: 30; radius: 8
+                    color: panel.mode === index ? root.accent : (tabMa.containsMouse ? root.border : root.surface)
                     Behavior on color { ColorAnimation { duration: 120 } }
                     Text {
-                        id: tabLbl
-                        anchors.centerIn: parent
-                        text: modelData
-                        font.pixelSize: 11
-                        font.bold: true
-                        font.family: root.appFont
+                        id: tabLbl; anchors.centerIn: parent; text: modelData
+                        font.pixelSize: 11; font.bold: true; font.family: root.appFont
                         color: panel.mode === index ? "#0e0e0f" : root.textMid
                     }
                     MouseArea {
-                        id: tabMa
-                        anchors.fill: parent
-                        hoverEnabled: true
+                        id: tabMa; anchors.fill: parent; hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: { panel.mode = index; batchResults.clear() }
                     }
@@ -200,250 +276,269 @@ Item {
             }
         }
 
-        // ── Single mode ───────────────────────────────────────────────────────
-        RowLayout {
+        // -- Files mode --------------------------------------------------------
+        ColumnLayout {
             visible: panel.mode === 0
             Layout.fillWidth: true
-            spacing: 16
+            Layout.fillHeight: true
+            spacing: 10
 
-            DropZone {
-                id: inputZone
-                Layout.fillWidth: true
-                Layout.preferredHeight: 130
-                hasFile: panel.singleInput !== ""
-                fileName: panel.singleInput !== ""
-                          ? panel.singleInput.split("/").pop().split("\\").pop() : ""
-                formatExt: panel.singleInExt
-                label: "input"
-                placeholderIcon: "📂"
-                placeholderText: "drop file here or click to browse"
-                onClicked: singleInputPicker.open()
-            }
-
-            Column {
-                spacing: 6
-                Layout.preferredWidth: 48
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "→"
-                    font.pixelSize: 28
-                    color: panel.singleInput !== "" ? root.accent : root.border
-                    Behavior on color { ColorAnimation { duration: 200 } }
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "to"
-                    font.pixelSize: 9
-                    font.family: root.appFont
-                    font.letterSpacing: 2
-                    color: root.textDim
-                }
-            }
-
-            OutputZone {
-                id: outputZone
-                Layout.fillWidth: true
-                Layout.preferredHeight: 130
-                outputPath: panel.singleOutput
-                formats: panel.singleFormats
-                selectedFormat: panel.singleOutExt
-                enabled: panel.singleInput !== ""
-                onFormatSelected: function(fmt) {
-                    panel.singleOutExt = fmt
-                    panel.singleOutput = bridge.suggestOutputPath(panel.singleInput, fmt)
-                }
-                onBrowseClicked: {
-                    if (panel.singleOutExt !== "") singleOutputPicker.open()
-                }
-            }
-        }
-
-        // ── Batch mode ────────────────────────────────────────────────────────
-        RowLayout {
-            visible: panel.mode === 1
-            Layout.fillWidth: true
-            Layout.preferredHeight: 200
-            spacing: 16
-
+            // Empty drop zone
             Rectangle {
-                Layout.fillHeight: true
+                visible: batchModel.count === 0
                 Layout.fillWidth: true
-                color: root.surface
+                Layout.preferredHeight: 120
                 radius: 8
-                border.color: root.border
+                color: emptyDropMa.containsMouse || emptyDrop.containsDrag ? root.surfaceHi : root.surface
+                border.color: emptyDrop.containsDrag ? root.accent
+                              : (emptyDropMa.containsMouse ? root.textDim : root.border)
                 border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                DropArea {
+                    id: emptyDrop
+                    anchors.fill: parent
+                    onDropped: function(drop) {
+                        for (var i = 0; i < drop.urls.length; i++)
+                            panel.addFile(bridge.urlToPath(drop.urls[i].toString()))
+                    }
+                }
+
+                Column {
+                    anchors.centerIn: parent; spacing: 8
+                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "📂"; font.pixelSize: 30 }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "drop files here or click to browse"
+                        font.pixelSize: 12; font.family: root.appFont; color: root.textDim
+                    }
+                }
+                MouseArea {
+                    id: emptyDropMa; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor; onClicked: batchInputPicker.open()
+                }
+            }
+
+            // Header row (when list has items)
+            RowLayout {
+                visible: batchModel.count > 0
+                Layout.fillWidth: true; spacing: 8
+
+                Rectangle {
+                    width: addMoreLbl.implicitWidth + 16; height: 28; radius: 7
+                    color: addMoreMa.containsMouse ? root.accentDim : root.accent
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Text { id: addMoreLbl; anchors.centerIn: parent; text: "+ add files"
+                        font.pixelSize: 10; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
+                    MouseArea { id: addMoreMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor; onClicked: batchInputPicker.open() }
+                }
+
+                DropArea {
+                    Layout.fillWidth: true; height: 28
+                    onDropped: function(drop) {
+                        for (var i = 0; i < drop.urls.length; i++)
+                            panel.addFile(bridge.urlToPath(drop.urls[i].toString()))
+                    }
+                    Rectangle {
+                        anchors.fill: parent; radius: 7
+                        color: parent.containsDrag ? root.surfaceHi : "transparent"
+                        border.color: parent.containsDrag ? root.accent : "transparent"; border.width: 1
+                        Text { anchors.centerIn: parent; text: "or drop more here"
+                            font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                    }
+                }
+
+                Rectangle {
+                    width: clrAllLbl.implicitWidth + 16; height: 28; radius: 7
+                    color: clrAllMa.containsMouse ? root.surfaceHi : root.surface
+                    border.color: root.border; border.width: 1
+                    Text { id: clrAllLbl; anchors.centerIn: parent; text: "clear all"
+                        font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                    MouseArea { id: clrAllMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: { batchModel.clear(); panel.overrideExt = "" } }
+                }
+            }
+
+            // Override-all row
+            RowLayout {
+                visible: batchModel.count > 0
+                Layout.fillWidth: true; spacing: 8
+
+                Text {
+                    text: "convert all to"
+                    font.pixelSize: 10; font.bold: true; font.family: root.appFont
+                    color: root.textDim; Layout.alignment: Qt.AlignVCenter
+                }
+
+                ScrollView {
+                    Layout.fillWidth: true; height: 32
+                    ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff; clip: true
+                    Row {
+                        spacing: 5
+                        Rectangle {
+                            width: pfLbl.implicitWidth + 14; height: 26; radius: 7
+                            color: panel.overrideExt === "" ? "#50b4ff" : (pfMa.containsMouse ? root.border : root.surface)
+                            border.color: panel.overrideExt === "" ? "#50b4ff" : root.border; border.width: 1
+                            Behavior on color { ColorAnimation { duration: 80 } }
+                            Text { id: pfLbl; anchors.centerIn: parent; text: "per-file"
+                                font.pixelSize: 10; font.family: root.appFont; font.bold: panel.overrideExt === ""
+                                color: panel.overrideExt === "" ? "#0e0e0f" : root.textDim }
+                            MouseArea { id: pfMa; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor; onClicked: panel.overrideExt = "" }
+                        }
+                        Repeater {
+                            model: batchModel.count > 0 ? panel.unionFormats() : []
+                            Rectangle {
+                                width: ovLbl.implicitWidth + 14; height: 26; radius: 7
+                                color: panel.overrideExt === modelData ? "#50b4ff" : (ovMa.containsMouse ? root.border : root.surface)
+                                border.color: panel.overrideExt === modelData ? "#50b4ff" : root.border; border.width: 1
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text { id: ovLbl; anchors.centerIn: parent; text: "." + modelData
+                                    font.pixelSize: 11; font.family: root.appFont; font.bold: panel.overrideExt === modelData
+                                    color: panel.overrideExt === modelData ? "#0e0e0f" : root.textMid }
+                                MouseArea { id: ovMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor; onClicked: panel.overrideExt = modelData }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // File list
+            ScrollView {
+                visible: batchModel.count > 0
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
                 clip: true
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 8
+                ListView {
+                    id: fileListView
+                    model: batchModel
+                    spacing: 4
+                    clip: true
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            text: panel.batchFiles.length === 0
-                                  ? "no files selected"
-                                  : (panel.batchFiles.length + " file"
-                                     + (panel.batchFiles.length === 1 ? "" : "s"))
-                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim
-                        }
-                        Item { Layout.fillWidth: true }
-                        Rectangle {
-                            width: addLbl.implicitWidth + 16; height: 24; radius: 6
-                            color: addMa.containsMouse ? root.accentDim : root.accent
-                            Behavior on color { ColorAnimation { duration: 100 } }
-                            Text { id: addLbl; anchors.centerIn: parent; text: "+ add files"
-                                   font.pixelSize: 10; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
-                            MouseArea { id: addMa; anchors.fill: parent; hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor; onClicked: batchInputPicker.open() }
-                        }
-                        Item { width: 4 }
-                        Rectangle {
-                            visible: panel.batchFiles.length > 0
-                            width: clrLbl.implicitWidth + 16; height: 24; radius: 6
-                            color: clrMa.containsMouse ? root.surfaceHi : root.surface
-                            border.color: root.border; border.width: 1
-                            Text { id: clrLbl; anchors.centerIn: parent; text: "clear"
-                                   font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                            MouseArea { id: clrMa; anchors.fill: parent; hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: { panel.batchFiles = []; panel.batchOutExt = "" } }
-                        }
-                    }
+                    delegate: Rectangle {
+                        id: rowRect
+                        width: fileListView.width
+                        height: 36
+                        radius: 7
+                        color: rowHoverMa.containsMouse ? root.surfaceHi : root.surface
+                        Behavior on color { ColorAnimation { duration: 80 } }
 
-                    ScrollView {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                        clip: true
-                        ListView {
-                            model: panel.batchFiles
-                            spacing: 3
-                            delegate: Item {
-                                width: ListView.view.width
-                                height: 26
-                                RowLayout {
-                                    anchors.fill: parent
-                                    spacing: 6
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelData.split("/").pop().split("\\").pop()
-                                        font.pixelSize: 11; font.family: root.appFont
-                                        color: root.textMid; elide: Text.ElideMiddle
-                                    }
-                                    Rectangle {
-                                        width: 20; height: 20; radius: 4
-                                        color: rmMa.containsMouse ? root.errorClr : "transparent"
-                                        Behavior on color { ColorAnimation { duration: 80 } }
-                                        Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 9; color: root.textDim }
-                                        MouseArea {
-                                            id: rmMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                var arr = panel.batchFiles.slice()
-                                                arr.splice(index, 1)
-                                                panel.batchFiles = arr
-                                            }
-                                        }
-                                    }
+                        property var rowFormats: bridge.formatsFor(model.filePath)
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10; anchors.rightMargin: 8
+                            spacing: 8
+
+                            // Checkbox
+                            Rectangle {
+                                width: 14; height: 14; radius: 3
+                                color: model.enabled ? "#50b4ff" : "transparent"
+                                border.color: model.enabled ? "#50b4ff" : root.accent
+                                border.width: 1.5
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text {
+                                    anchors.centerIn: parent; text: "\u2713"
+                                    font.pixelSize: 9; font.bold: true; color: "#0e0e0f"
+                                    visible: model.enabled
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: batchModel.setProperty(index, "enabled", !model.enabled)
+                                }
+                            }
+
+                            // Filename
+                            Text {
+                                Layout.fillWidth: true
+                                text: model.filePath.split("/").pop().split("\\").pop()
+                                font.pixelSize: 12; font.family: root.appFont
+                                color: model.enabled ? root.textPrim : root.textDim
+                                elide: Text.ElideMiddle
+                            }
+
+                            // Source ext badge
+                            Rectangle {
+                                width: srcExtLbl.implicitWidth + 10; height: 20; radius: 4
+                                color: root.surfaceHi; border.color: root.border; border.width: 1
+                                opacity: model.enabled ? 1.0 : 0.4
+                                Text { id: srcExtLbl; anchors.centerIn: parent
+                                    text: "." + model.sourceExt
+                                    font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                            }
+
+                            // Arrow
+                            Text {
+                                text: "\u2192"; font.pixelSize: 14
+                                color: model.enabled ? root.accent : root.border
+                                opacity: model.enabled ? 1.0 : 0.4
+                            }
+
+                            // Target chip
+                            Rectangle {
+                                id: tgtChip
+                                property string eff: panel.overrideExt !== "" ? panel.overrideExt : model.targetExt
+                                width: tgtChipLbl.implicitWidth + 14; height: 26; radius: 7
+                                color: eff !== "" ? (tgtChipMa.containsMouse ? "#3fa0e8" : "#50b4ff")
+                                                  : (tgtChipMa.containsMouse ? root.border : root.surfaceHi)
+                                border.color: eff !== "" ? "#50b4ff" : root.border; border.width: 1
+                                opacity: model.enabled ? 1.0 : 0.4
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text {
+                                    id: tgtChipLbl; anchors.centerIn: parent
+                                    text: tgtChip.eff !== "" ? ("." + tgtChip.eff) : "pick..."
+                                    font.pixelSize: 11; font.family: root.appFont; font.bold: tgtChip.eff !== ""
+                                    color: tgtChip.eff !== "" ? "#0e0e0f" : root.textDim
+                                }
+                                MouseArea {
+                                    id: tgtChipMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: panel.overrideExt === "" && model.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    enabled: panel.overrideExt === "" && model.enabled
+                                    onClicked: fmtPopup.openFor(index, rowRect.rowFormats, tgtChip)
+                                }
+                            }
+
+                            // Remove button
+                            Rectangle {
+                                width: 22; height: 22; radius: 5
+                                color: rmRowMa.containsMouse ? root.errorClr : "transparent"
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text { anchors.centerIn: parent; text: "x"
+                                    font.pixelSize: 9; color: root.textDim }
+                                MouseArea {
+                                    id: rmRowMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: batchModel.remove(index)
                                 }
                             }
                         }
-                    }
-                }
-            }
 
-            // Target format + output dir
-            ColumnLayout {
-                Layout.fillHeight: true
-                Layout.preferredWidth: 230
-                spacing: 10
-
-                Text { text: "convert to"; font.pixelSize: 10; font.bold: true
-                       font.family: root.appFont; color: root.textDim }
-
-                Item {
-                    Layout.fillWidth: true; height: 80
-                    Text {
-                        visible: panel.batchFiles.length === 0
-                        anchors.centerIn: parent; text: "add files first"
-                        font.pixelSize: 11; font.family: root.appFont; color: root.textDim
-                    }
-                    ScrollView {
-                        anchors.fill: parent
-                        visible: panel.batchFiles.length > 0
-                        ScrollBar.vertical.policy: ScrollBar.AsNeeded; clip: true
-                        Flow {
-                            width: 230; spacing: 5
-                            Repeater {
-                                model: panel.batchFormats()
-                                Rectangle {
-                                    width: bfTxt.implicitWidth + 14; height: 26; radius: 7
-                                    color: panel.batchOutExt === modelData
-                                           ? root.accent : (bfMa.containsMouse ? root.border : root.surface)
-                                    border.color: panel.batchOutExt === modelData ? root.accent : root.border; border.width: 1
-                                    Behavior on color { ColorAnimation { duration: 80 } }
-                                    Text { id: bfTxt; anchors.centerIn: parent; text: "." + modelData
-                                           font.pixelSize: 11; font.family: root.appFont
-                                           font.bold: panel.batchOutExt === modelData
-                                           color: panel.batchOutExt === modelData ? "#0e0e0f" : root.textMid }
-                                    MouseArea { id: bfMa; anchors.fill: parent; hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor; onClicked: panel.batchOutExt = modelData }
-                                }
-                            }
+                        MouseArea {
+                            id: rowHoverMa; anchors.fill: parent
+                            hoverEnabled: true; acceptedButtons: Qt.NoButton
                         }
                     }
                 }
-
-                Rectangle { Layout.fillWidth: true; height: 1; color: root.border; opacity: 0.5 }
-                Text { text: "output folder"; font.pixelSize: 10; font.bold: true
-                       font.family: root.appFont; color: root.textDim }
-
-                Rectangle {
-                    Layout.fillWidth: true; height: 32; radius: 7
-                    color: bsaMa.containsMouse ? root.border : root.surface
-                    border.color: panel.batchSameDir ? root.accent : root.border; border.width: 1
-                    Behavior on color { ColorAnimation { duration: 80 } }
-                    Text { anchors.centerIn: parent; text: "· same as source"
-                           font.pixelSize: 11; font.family: root.appFont
-                           color: panel.batchSameDir ? root.accent : root.textMid }
-                    MouseArea { id: bsaMa; anchors.fill: parent; hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor; onClicked: panel.batchSameDir = true }
-                }
-                Rectangle {
-                    Layout.fillWidth: true; height: 32; radius: 7
-                    color: bcuMa.containsMouse ? root.border : root.surface
-                    border.color: !panel.batchSameDir ? root.accent : root.border; border.width: 1
-                    Behavior on color { ColorAnimation { duration: 80 } }
-                    Text {
-                        anchors { left: parent.left; leftMargin: 10; right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
-                        text: panel.batchOutDir !== ""
-                              ? ("📁 " + panel.batchOutDir.split("/").pop())
-                              : "· choose folder..."
-                        font.pixelSize: 11; font.family: root.appFont
-                        color: !panel.batchSameDir ? root.accent : root.textMid; elide: Text.ElideLeft
-                    }
-                    MouseArea { id: bcuMa; anchors.fill: parent; hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: { panel.batchSameDir = false; batchOutDirPicker.open() } }
-                }
-
-                Item { Layout.fillHeight: true }
             }
         }
 
-        // ── Folder mode ───────────────────────────────────────────────────────
+        // -- Folder mode -------------------------------------------------------
         ColumnLayout {
-            visible: panel.mode === 2
+            visible: panel.mode === 1
             Layout.fillWidth: true
             spacing: 12
 
             Rectangle {
                 Layout.fillWidth: true; height: 90; radius: 8
-                color: fzMa.containsMouse ? root.surfaceHi : root.surface
+                color: folderZoneMa.containsMouse ? root.surfaceHi : root.surface
                 border.color: panel.folderPath !== "" ? root.accent
-                              : (fzMa.containsMouse ? root.textDim : root.border)
+                              : (folderZoneMa.containsMouse ? root.textDim : root.border)
                 border.width: 1
                 Behavior on border.color { ColorAnimation { duration: 150 } }
                 clip: true
@@ -463,17 +558,20 @@ Item {
                 Column {
                     anchors.centerIn: parent; spacing: 6
                     Text { anchors.horizontalCenter: parent.horizontalCenter
-                           text: panel.folderPath !== "" ? "📁" : "📂"; font.pixelSize: 28 }
-                    Text { anchors.horizontalCenter: parent.horizontalCenter
-                           text: panel.folderPath !== ""
-                                 ? (panel.folderPath.split("/").pop() || panel.folderPath)
-                                 : "drop a folder or click to browse"
-                           font.pixelSize: 12; font.family: root.appFont
-                           color: panel.folderPath !== "" ? root.textPrim : root.textDim }
+                        text: panel.folderPath !== "" ? "📁" : "📂"; font.pixelSize: 28 }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: panel.folderPath !== ""
+                              ? (panel.folderPath.split("/").pop() || panel.folderPath)
+                              : "drop a folder or click to browse"
+                        font.pixelSize: 12; font.family: root.appFont
+                        color: panel.folderPath !== "" ? root.textPrim : root.textDim
+                    }
                 }
-
-                MouseArea { id: fzMa; anchors.fill: parent; hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor; onClicked: folderInputPicker.open() }
+                MouseArea {
+                    id: folderZoneMa; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor; onClicked: folderInputPicker.open()
+                }
             }
 
             RowLayout {
@@ -481,13 +579,13 @@ Item {
                 Layout.fillWidth: true; spacing: 10
 
                 Rectangle {
-                    width: recLbl.implicitWidth + 24; height: 28; radius: 7
+                    width: recLabel.implicitWidth + 24; height: 28; radius: 7
                     color: panel.folderRecurse ? root.accent : root.surface
                     border.color: panel.folderRecurse ? root.accent : root.border; border.width: 1
                     Behavior on color { ColorAnimation { duration: 100 } }
-                    Text { id: recLbl; anchors.centerIn: parent; text: "recursive"
-                           font.pixelSize: 11; font.family: root.appFont
-                           color: panel.folderRecurse ? "#0e0e0f" : root.textMid }
+                    Text { id: recLabel; anchors.centerIn: parent; text: "recursive"
+                        font.pixelSize: 11; font.family: root.appFont
+                        color: panel.folderRecurse ? "#0e0e0f" : root.textMid }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             panel.folderRecurse = !panel.folderRecurse
@@ -498,8 +596,7 @@ Item {
                 }
 
                 Text {
-                    text: panel.folderFiles.length === 0
-                          ? "no supported files found"
+                    text: panel.folderFiles.length === 0 ? "no supported files found"
                           : (panel.folderFiles.length + " file"
                              + (panel.folderFiles.length === 1 ? "" : "s") + " found")
                     font.pixelSize: 11; font.family: root.appFont
@@ -513,7 +610,7 @@ Item {
                 Layout.fillWidth: true; spacing: 12
 
                 Text { text: "convert to"; font.pixelSize: 10; font.bold: true
-                       font.family: root.appFont; color: root.textDim; Layout.alignment: Qt.AlignVCenter }
+                    font.family: root.appFont; color: root.textDim; Layout.alignment: Qt.AlignVCenter }
 
                 ScrollView {
                     Layout.fillWidth: true; height: 36
@@ -525,16 +622,16 @@ Item {
                             model: panel.folderFormats()
                             Rectangle {
                                 width: ffTxt.implicitWidth + 14; height: 28; radius: 7
-                                color: panel.folderOutExt === modelData
-                                       ? root.accent : (ffMa.containsMouse ? root.border : root.surface)
-                                border.color: panel.folderOutExt === modelData ? root.accent : root.border; border.width: 1
+                                color: panel.folderOutExt === modelData ? "#50b4ff"
+                                       : (ffMa.containsMouse ? root.border : root.surface)
+                                border.color: panel.folderOutExt === modelData ? "#50b4ff" : root.border; border.width: 1
                                 Behavior on color { ColorAnimation { duration: 80 } }
                                 Text { id: ffTxt; anchors.centerIn: parent; text: "." + modelData
-                                       font.pixelSize: 11; font.family: root.appFont
-                                       font.bold: panel.folderOutExt === modelData
-                                       color: panel.folderOutExt === modelData ? "#0e0e0f" : root.textMid }
+                                    font.pixelSize: 11; font.family: root.appFont
+                                    font.bold: panel.folderOutExt === modelData
+                                    color: panel.folderOutExt === modelData ? "#0e0e0f" : root.textMid }
                                 MouseArea { id: ffMa; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor; onClicked: panel.folderOutExt = modelData }
+                                    cursorShape: Qt.PointingHandCursor; onClicked: panel.folderOutExt = modelData }
                             }
                         }
                     }
@@ -546,7 +643,7 @@ Item {
                 Layout.fillWidth: true; spacing: 8
 
                 Text { text: "output"; font.pixelSize: 10; font.bold: true
-                       font.family: root.appFont; color: root.textDim; Layout.alignment: Qt.AlignVCenter }
+                    font.family: root.appFont; color: root.textDim; Layout.alignment: Qt.AlignVCenter }
 
                 Rectangle {
                     width: fsdLbl.implicitWidth + 20; height: 28; radius: 7
@@ -554,10 +651,10 @@ Item {
                     border.color: panel.folderSameDir ? root.accent : root.border; border.width: 1
                     Behavior on color { ColorAnimation { duration: 100 } }
                     Text { id: fsdLbl; anchors.centerIn: parent; text: "same location"
-                           font.pixelSize: 11; font.family: root.appFont
-                           color: panel.folderSameDir ? "#0e0e0f" : root.textMid }
+                        font.pixelSize: 11; font.family: root.appFont
+                        color: panel.folderSameDir ? "#0e0e0f" : root.textMid }
                     MouseArea { id: fsdMa; anchors.fill: parent; hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor; onClicked: panel.folderSameDir = true }
+                        cursorShape: Qt.PointingHandCursor; onClicked: panel.folderSameDir = true }
                 }
 
                 Rectangle {
@@ -574,106 +671,140 @@ Item {
                         color: !panel.folderSameDir ? "#0e0e0f" : root.textMid
                     }
                     MouseArea { id: fcdMa; anchors.fill: parent; hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: { panel.folderSameDir = false; folderOutDirPicker.open() } }
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: { panel.folderSameDir = false; folderOutDirPicker.open() } }
                 }
             }
         }
 
-        // ── Advanced options ──────────────────────────────────────────────────
+        // -- Advanced options --------------------------------------------------
         AdvancedPanel {
             id: advPanel
             Layout.fillWidth: true
-            visible: mode === 0 ? panel.singleInput !== "" : true
         }
 
         Item { height: 4 }
 
-        // ── Convert button ────────────────────────────────────────────────────
+        // -- Convert button ----------------------------------------------------
         Item {
             Layout.fillWidth: true
             height: 44
 
             property bool canConvert: {
                 if (bridge.converting) return false
-                if (panel.mode === 0) return panel.singleInput !== "" && panel.singleOutput !== ""
-                if (panel.mode === 1) return panel.batchFiles.length > 0 && panel.batchOutExt !== ""
+                if (panel.mode === 0) return panel.enabledCount() > 0
                 return panel.folderPath !== "" && panel.folderOutExt !== "" && panel.folderFiles.length > 0
             }
 
             property string label: {
                 if (bridge.converting) return "converting..."
-                if (panel.mode === 0) return "convert →"
-                var n = panel.mode === 1 ? panel.batchFiles.length : panel.folderFiles.length
-                return n > 0 ? ("convert " + n + " file" + (n === 1 ? "" : "s") + " →") : "convert →"
+                if (panel.mode === 0) {
+                    var n = panel.enabledCount()
+                    return n > 0 ? ("convert " + n + " file" + (n === 1 ? "" : "s") + " →") : "convert →"
+                }
+                var fn = panel.folderFiles.length
+                return fn > 0 ? ("convert " + fn + " file" + (fn === 1 ? "" : "s") + " →") : "convert →"
             }
 
             Rectangle {
                 id: convertBtn
                 anchors.left: parent.left
                 width: Math.max(cvtLbl.implicitWidth + 32, 160)
-                height: parent.height
-                radius: 8
+                height: parent.height; radius: 8
                 color: {
                     if (!parent.canConvert) return root.border
                     if (cvtMa.containsMouse) return root.accentDim
                     return root.accent
                 }
                 Behavior on color { ColorAnimation { duration: 100 } }
-
                 Text {
-                    id: cvtLbl
-                    anchors.centerIn: parent
-                    text: parent.parent.label
+                    id: cvtLbl; anchors.centerIn: parent; text: parent.parent.label
                     font.pixelSize: 13; font.bold: true; font.family: root.appFont
                     color: parent.parent.canConvert ? "#0e0e0f" : root.textDim
                 }
-
                 MouseArea {
-                    id: cvtMa
-                    anchors.fill: parent; hoverEnabled: true
+                    id: cvtMa; anchors.fill: parent; hoverEnabled: true
                     cursorShape: parent.parent.canConvert ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: if (parent.parent.canConvert) panel.doConvert()
                 }
             }
-
-            Text {
-                visible: panel.mode === 0
-                anchors.left: convertBtn.right; anchors.leftMargin: 14
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - convertBtn.width - 14
-                text: panel.singleOutput
-                font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideLeft
-            }
         }
 
-        // ── Batch / folder results ────────────────────────────────────────────
+        // -- Batch results -----------------------------------------------------
         Rectangle {
-            visible: panel.mode !== 0 && batchResults.count > 0
+            visible: batchResults.count > 0
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(batchList.contentHeight + 16, 200)
+            Layout.preferredHeight: Math.min(batchList.contentHeight + 16, 180)
             color: root.surface; radius: 8; border.color: root.border; border.width: 1; clip: true
 
             ListView {
                 id: batchList
                 anchors.fill: parent; anchors.margins: 8; spacing: 3
                 model: batchResults; clip: true
-
                 delegate: RowLayout {
                     width: batchList.width; spacing: 8
-                    Text { text: model.success ? "✓" : "✗"; font.pixelSize: 11; font.family: root.appFont
-                           color: model.success ? root.success : root.errorClr }
+                    Text { text: model.success ? "\u2713" : "\u2717"
+                        font.pixelSize: 11; font.family: root.appFont
+                        color: model.success ? root.success : root.errorClr }
                     Text { text: model.filename; font.pixelSize: 11; font.family: root.appFont
-                           color: root.textPrim; elide: Text.ElideMiddle; Layout.preferredWidth: 180 }
-                    Text { text: model.success ? ("→ " + model.detail.split("/").pop()) : model.detail
-                           font.pixelSize: 10; font.family: root.appFont
-                           color: model.success ? root.textDim : root.errorClr
-                           elide: Text.ElideLeft; Layout.fillWidth: true }
+                        color: root.textPrim; elide: Text.ElideMiddle; Layout.preferredWidth: 180 }
+                    Text { text: model.success ? ("\u2192 " + model.detail.split("/").pop()) : model.detail
+                        font.pixelSize: 10; font.family: root.appFont
+                        color: model.success ? root.textDim : root.errorClr
+                        elide: Text.ElideLeft; Layout.fillWidth: true }
                 }
             }
         }
 
         Item { Layout.fillHeight: true }
     }
-}
 
+    // -- Per-row format picker popup -------------------------------------------
+    Popup {
+        id: fmtPopup
+        property int rowIndex: -1
+        property var formats:  []
+        padding: 10
+
+        background: Rectangle {
+            color: root.surfaceHi; radius: 10
+            border.color: root.border; border.width: 1
+        }
+
+        function openFor(idx, fmts, anchor) {
+            rowIndex = idx
+            formats  = fmts
+            var pos  = anchor.mapToItem(panel, 0, anchor.height + 4)
+            x = Math.min(pos.x, panel.width - implicitWidth - 12)
+            y = pos.y
+            open()
+        }
+
+        contentItem: Flow {
+            width: 260; spacing: 6
+            Repeater {
+                model: fmtPopup.formats
+                Rectangle {
+                    property bool isCur: fmtPopup.rowIndex >= 0
+                                         && fmtPopup.rowIndex < batchModel.count
+                                         && batchModel.get(fmtPopup.rowIndex).targetExt === modelData
+                    width: ppLbl.implicitWidth + 14; height: 28; radius: 7
+                    color: isCur ? "#50b4ff" : (ppMa.containsMouse ? root.border : root.surface)
+                    border.color: isCur ? "#50b4ff" : root.border; border.width: 1
+                    Behavior on color { ColorAnimation { duration: 80 } }
+                    Text { id: ppLbl; anchors.centerIn: parent; text: "." + modelData
+                        font.pixelSize: 11; font.family: root.appFont; font.bold: isCur
+                        color: isCur ? "#0e0e0f" : root.textMid }
+                    MouseArea {
+                        id: ppMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            batchModel.setProperty(fmtPopup.rowIndex, "targetExt", modelData)
+                            fmtPopup.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
