@@ -31,6 +31,48 @@ signals:
     void finished(converter::ConversionResult result);
 };
 
+// ── Worker thread for batch conversion ───────────────────────────────────────
+class BatchWorker : public QObject {
+    Q_OBJECT
+public:
+    QList<ConversionJob> jobs;
+
+public slots:
+    void run() {
+        const int total = jobs.size();
+        int succeeded = 0;
+        double totalSecs = 0.0;
+
+        for (int i = 0; i < total; ++i) {
+            emit fileStarted(i, total,
+                QString::fromStdString(jobs[i].inputPath.filename().string()));
+
+            auto result = Dispatcher::dispatch(jobs[i]);
+
+            if (result.success) {
+                ++succeeded;
+                totalSecs += result.durationSeconds;
+                emit fileCompleted(i + 1, total,
+                    QString::fromStdString(jobs[i].inputPath.filename().string()),
+                    true,
+                    QString::fromStdString(result.outputPath.string()));
+            } else {
+                emit fileCompleted(i + 1, total,
+                    QString::fromStdString(jobs[i].inputPath.filename().string()),
+                    false,
+                    QString::fromStdString(result.errorMsg));
+            }
+        }
+        emit finished(succeeded, total - succeeded, totalSecs);
+    }
+
+signals:
+    void fileStarted(int index, int total, const QString& filename);
+    void fileCompleted(int done, int total, const QString& filename,
+                       bool success, const QString& detail);
+    void finished(int succeeded, int failed, double totalSecs);
+};
+
 // ── The main QML-exposed bridge class ────────────────────────────────────────
 class ConverterBridge : public QObject {
     Q_OBJECT
@@ -39,6 +81,8 @@ class ConverterBridge : public QObject {
     Q_PROPERTY(bool converting READ converting NOTIFY convertingChanged)
     Q_PROPERTY(float progress  READ progress  NOTIFY progressChanged)
     Q_PROPERTY(QString progressMessage READ progressMessage NOTIFY progressChanged)
+    Q_PROPERTY(int batchTotal READ batchTotal NOTIFY batchTotalChanged)
+    Q_PROPERTY(int batchDone  READ batchDone  NOTIFY batchDoneChanged)
 
 public:
     explicit ConverterBridge(QObject* parent = nullptr) : QObject(parent) {}
@@ -46,6 +90,8 @@ public:
     bool    converting()      const { return m_converting; }
     float   progress()        const { return m_progress; }
     QString progressMessage() const { return m_progressMessage; }
+    int     batchTotal()      const { return m_batchTotal; }
+    int     batchDone()       const { return m_batchDone; }
 
     // ── Convert a single file ─────────────────────────────────────────────────
     Q_INVOKABLE void convertFile(
@@ -174,6 +220,100 @@ public:
         return QString::fromStdString(out.string());
     }
 
+    // ── Scan a folder for files with known formats ─────────────────────────────
+    Q_INVOKABLE QStringList scanFolder(const QString& dirPath, bool recursive) const {
+        auto& reg = FormatRegistry::instance();
+        QStringList result;
+        fs::path root(dirPath.toStdString());
+        if (!fs::exists(root) || !fs::is_directory(root)) return result;
+
+        auto scan = [&](const fs::path& dir, bool recurse, auto& self) -> void {
+            for (auto& entry : fs::directory_iterator(dir)) {
+                if (entry.is_regular_file()) {
+                    if (reg.detect(entry.path()))
+                        result << QString::fromStdString(entry.path().string());
+                } else if (recurse && entry.is_directory()) {
+                    self(entry.path(), recurse, self);
+                }
+            }
+        };
+        scan(root, recursive, scan);
+        return result;
+    }
+
+    // ── Batch convert a list of files to a target extension ───────────────────
+    Q_INVOKABLE void convertBatch(
+        const QStringList& inputPaths,
+        const QString& targetExt,
+        const QString& outputDir,
+        const QVariantMap& options = {})
+    {
+        if (m_converting || inputPaths.isEmpty()) return;
+
+        m_converting  = true;
+        m_batchTotal  = inputPaths.size();
+        m_batchDone   = 0;
+        m_progress    = 0.0f;
+        m_progressMessage = QString("0 / %1").arg(m_batchTotal);
+        emit convertingChanged();
+        emit progressChanged();
+        emit batchTotalChanged();
+        emit batchDoneChanged();
+
+        QList<ConversionJob> jobs;
+        jobs.reserve(inputPaths.size());
+        for (const auto& inPath : inputPaths) {
+            ConversionJob job;
+            job.inputPath = fs::path(inPath.toStdString());
+            fs::path outDir = outputDir.isEmpty()
+                ? job.inputPath.parent_path()
+                : fs::path(outputDir.toStdString());
+            if (!outDir.empty()) fs::create_directories(outDir);
+            job.outputPath = outDir / (job.inputPath.stem().string() + "." + targetExt.toStdString());
+            applyOptions(job, options);
+            jobs << std::move(job);
+        }
+
+        auto* worker = new BatchWorker();
+        auto* thread = new QThread(this);
+        worker->jobs = std::move(jobs);
+        worker->moveToThread(thread);
+
+        connect(thread, &QThread::started, worker, &BatchWorker::run);
+
+        connect(worker, &BatchWorker::fileStarted, this,
+            [this](int index, int total, const QString& filename) {
+                m_progressMessage = QString("%1 / %2  —  %3").arg(index + 1).arg(total).arg(filename);
+                m_progress = (float)index / total;
+                emit progressChanged();
+            }, Qt::QueuedConnection);
+
+        connect(worker, &BatchWorker::fileCompleted, this,
+            [this](int done, int total, const QString& filename, bool success, const QString& detail) {
+                m_batchDone = done;
+                m_progress  = (float)done / total;
+                m_progressMessage = QString("%1 / %2  —  %3").arg(done).arg(total).arg(filename);
+                emit batchDoneChanged();
+                emit progressChanged();
+                emit batchFileCompleted(done, total, filename, success, detail);
+            }, Qt::QueuedConnection);
+
+        connect(worker, &BatchWorker::finished, this,
+            [this, worker, thread](int succeeded, int failed, double totalSecs) {
+                thread->quit();
+                worker->deleteLater();
+                thread->deleteLater();
+                m_converting = false;
+                m_progress   = 1.0f;
+                m_progressMessage = QString("Done — %1 succeeded, %2 failed").arg(succeeded).arg(failed);
+                emit convertingChanged();
+                emit progressChanged();
+                emit batchFinished(succeeded, failed, totalSecs);
+            }, Qt::QueuedConnection);
+
+        thread->start();
+    }
+
 signals:
     void convertingChanged();
     void progressChanged();
@@ -183,11 +323,18 @@ signals:
                              qint64 outputBytes,
                              const QStringList& warnings);
     void conversionFailed(const QString& errorMessage);
+    void batchTotalChanged();
+    void batchDoneChanged();
+    void batchFileCompleted(int done, int total, const QString& filename,
+                            bool success, const QString& detail);
+    void batchFinished(int succeeded, int failed, double totalSecs);
 
 private:
     bool    m_converting      = false;
     float   m_progress        = 0.0f;
     QString m_progressMessage;
+    int     m_batchTotal      = 0;
+    int     m_batchDone       = 0;
 
     void applyOptions(ConversionJob& job, const QVariantMap& opts) {
         auto getStr = [&](const QString& key) -> std::optional<std::string> {

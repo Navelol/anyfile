@@ -132,6 +132,7 @@ ApplicationWindow {
                 ResultPanel {
                     id: resultPanel
                     Layout.fillWidth: true
+                    visible: filePanel.mode === 0
                 }
 
                 ProgressBar2 {
