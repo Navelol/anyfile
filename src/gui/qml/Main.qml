@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumWidth: 700
     minimumHeight: 540
     title: "anyfile"
-    flags: Qt.Window | Qt.CustomizeWindowHint
+    flags: Qt.Window | Qt.FramelessWindowHint
 
     // ── Palette ───────────────────────────────────────────────────────────────
     readonly property color bg:        "#0e0e0f"
@@ -35,8 +35,8 @@ ApplicationWindow {
     }
     readonly property string appFont: manropeLoader.status === FontLoader.Ready ? manropeLoader.name : "sans-serif"
 
-    color: root.bg
-    background: Rectangle { color: root.bg }
+    color: "transparent"
+    background: Rectangle { color: "transparent" }
 
     // ── Backend bridge ────────────────────────────────────────────────────────
     ConverterBridge {
@@ -50,96 +50,148 @@ ApplicationWindow {
     }
 
     // ── Frameless resize handles ───────────────────────────────────────────────
-    // (Qt.CustomizeWindowHint keeps OS resize border so these are not needed)
-
-    // ── Drag-and-drop overlay ─────────────────────────────────────────────────
-    DropArea {
-        anchors.fill: parent
-        keys: ["text/uri-list"]
-        onDropped: function(drop) {
-            for (var i = 0; i < drop.urls.length; i++)
-                filePanel.addFile(bridge.urlToPath(drop.urls[i].toString()))
-            dropOverlay.visible = false
-        }
-        onEntered: dropOverlay.visible = true
-        onExited:  dropOverlay.visible = false
+    // Edges
+    Item {
+        z: 999; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.LeftEdge) }
+        HoverHandler { cursorShape: Qt.SizeHorCursor }
+    }
+    Item {
+        z: 999; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.RightEdge) }
+        HoverHandler { cursorShape: Qt.SizeHorCursor }
+    }
+    Item {
+        z: 999; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.TopEdge) }
+        HoverHandler { cursorShape: Qt.SizeVerCursor }
+    }
+    Item {
+        z: 999; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 5
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.BottomEdge) }
+        HoverHandler { cursorShape: Qt.SizeVerCursor }
+    }
+    // Corners
+    Item {
+        z: 999; anchors.left: parent.left; anchors.top: parent.top; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.LeftEdge | Qt.TopEdge) }
+        HoverHandler { cursorShape: Qt.SizeFDiagCursor }
+    }
+    Item {
+        z: 999; anchors.right: parent.right; anchors.top: parent.top; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.RightEdge | Qt.TopEdge) }
+        HoverHandler { cursorShape: Qt.SizeBDiagCursor }
+    }
+    Item {
+        z: 999; anchors.left: parent.left; anchors.bottom: parent.bottom; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.LeftEdge | Qt.BottomEdge) }
+        HoverHandler { cursorShape: Qt.SizeBDiagCursor }
+    }
+    Item {
+        z: 999; anchors.right: parent.right; anchors.bottom: parent.bottom; width: 8; height: 8
+        DragHandler { target: null; grabPermissions: PointerHandler.TakeOverForbidden; onActiveChanged: if (active) root.startSystemResize(Qt.RightEdge | Qt.BottomEdge) }
+        HoverHandler { cursorShape: Qt.SizeFDiagCursor }
     }
 
+    // ── Rounded window frame ───────────────────────────────────────────────────
     Rectangle {
-        id: dropOverlay
+        id: windowFrame
         anchors.fill: parent
-        color: Qt.rgba(0.09, 0.09, 0.1, 0.92)
-        visible: false
-        z: 100
-        Column {
-            anchors.centerIn: parent
-            spacing: 12
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "⬇"
-                font.pixelSize: 52
-                color: root.accent
+        radius: 10
+        clip: true
+        color: root.bg
+        border.color: root.border
+        border.width: 1
+
+        // ── Drag-and-drop overlay ─────────────────────────────────────────
+        DropArea {
+            anchors.fill: parent
+            keys: ["text/uri-list"]
+            onDropped: function(drop) {
+                for (var i = 0; i < drop.urls.length; i++)
+                    filePanel.addFile(bridge.urlToPath(drop.urls[i].toString()))
+                dropOverlay.visible = false
             }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: "Drop files to add"
-                font.pixelSize: 18
-                font.family: root.appFont
-                color: root.textPrim
-                font.letterSpacing: 2
+            onEntered: dropOverlay.visible = true
+            onExited:  dropOverlay.visible = false
+        }
+
+        Rectangle {
+            id: dropOverlay
+            anchors.fill: parent
+            color: Qt.rgba(0.09, 0.09, 0.1, 0.92)
+            visible: false
+            z: 100
+            Column {
+                anchors.centerIn: parent
+                spacing: 12
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "⬇"
+                    font.pixelSize: 52
+                    color: root.accent
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Drop files to add"
+                    font.pixelSize: 18
+                    font.family: root.appFont
+                    color: root.textPrim
+                    font.letterSpacing: 2
+                }
             }
         }
-    }
 
-    // ── Layout ────────────────────────────────────────────────────────────────
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 0
+        // ── Layout ────────────────────────────────────────────────────────
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
 
-        // Header
-        HeaderBar { id: header; Layout.fillWidth: true }
+            // Header
+            HeaderBar { id: header; Layout.fillWidth: true }
 
-        // Main content
-        Item {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            // Main content
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
 
-            // ── Format browser overlay (slides down from top) ─────────────
-            FormatBrowser {
-                id: formatBrowser
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 12
-                z: 10
-                opacity: header.showFormats ? 1 : 0
-                visible: opacity > 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-            }
-
-            // ── Conversion panel ──────────────────────────────────────────
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 0
-
-                FilePanel {
-                    id: filePanel
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
+                // ── Format browser overlay (slides down from top) ─────────
+                FormatBrowser {
+                    id: formatBrowser
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 12
+                    z: 10
+                    opacity: header.showFormats ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
                 }
 
-                ResultPanel {
-                    id: resultPanel
-                    Layout.fillWidth: true
-                    visible: false
-                }
+                // ── Conversion panel ──────────────────────────────────────
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 0
 
-                ProgressBar2 {
-                    id: progressBar
-                    Layout.fillWidth: true
-                    visible: bridge.converting
-                    value: bridge.progress
-                    message: bridge.progressMessage
+                    FilePanel {
+                        id: filePanel
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                    }
+
+                    ResultPanel {
+                        id: resultPanel
+                        Layout.fillWidth: true
+                        visible: false
+                    }
+
+                    ProgressBar2 {
+                        id: progressBar
+                        Layout.fillWidth: true
+                        visible: bridge.converting
+                        value: bridge.progress
+                        message: bridge.progressMessage
+                    }
                 }
             }
         }
