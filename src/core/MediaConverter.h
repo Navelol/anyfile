@@ -18,6 +18,9 @@ public:
 
         if (outExt == "gif") {
             result = convertGif(job);
+        } else if (job.twoPass && job.videoBitrate) {
+            // VBR 2-pass encode
+            result = convertTwoPass(job);
         } else {
             auto args = (outExt == "ico") ? buildIcoArgs(job) : buildFFmpegArgs(job);
             int rc = Process::runCancellable("ffmpeg", args, job.cancelFlag);
@@ -37,6 +40,40 @@ public:
             result.outputBytes = fs::file_size(job.outputPath);
 
         return result;
+    }
+
+    // VBR 2-pass: pass 1 analysis → pass 2 encode
+    static ConversionResult convertTwoPass(const ConversionJob& job) {
+        auto args1 = buildFFmpegArgs(job);
+        // Pass 1: output to null, write stats
+        // Replace output path with null device
+        args1.pop_back(); // remove output path
+#ifdef _WIN32
+        args1.push_back("-f"); args1.push_back("null"); args1.push_back("NUL");
+#else
+        args1.push_back("-f"); args1.push_back("null"); args1.push_back("/dev/null");
+#endif
+        // Insert pass 1 flag before output
+        args1.push_back("-pass"); args1.push_back("1");
+
+        if (job.onProgress) job.onProgress(0.15f, "Pass 1 / 2...");
+        int rc1 = Process::runCancellable("ffmpeg", args1, job.cancelFlag);
+        if (rc1 == -2) return ConversionResult::cancelled();
+        if (rc1 != 0)  return ConversionResult::err("FFmpeg 2-pass (pass 1) failed");
+
+        if (job.cancelFlag && job.cancelFlag->load())
+            return ConversionResult::cancelled();
+
+        // Pass 2: actual encode
+        auto args2 = buildFFmpegArgs(job);
+        args2.push_back("-pass"); args2.push_back("2");
+
+        if (job.onProgress) job.onProgress(0.55f, "Pass 2 / 2...");
+        int rc2 = Process::runCancellable("ffmpeg", args2, job.cancelFlag);
+        if (rc2 == -2) return ConversionResult::cancelled();
+        if (rc2 != 0)  return ConversionResult::err("FFmpeg 2-pass (pass 2) failed");
+
+        return ConversionResult::ok(job.outputPath);
     }
 
 private:
@@ -163,6 +200,11 @@ private:
         if (!pix.empty())    { args.push_back("-pix_fmt"); args.push_back(pix); }
 
         if (job.videoBitrate) { args.push_back("-b:v"); args.push_back(*job.videoBitrate); }
+        if (job.videoMaxRate) {
+            args.push_back("-maxrate"); args.push_back(*job.videoMaxRate);
+            // bufsize = 2× maxrate is a sensible default
+            args.push_back("-bufsize"); args.push_back(*job.videoMaxRate);
+        }
         // Only set audio bitrate when the user explicitly requests one.
         // Codecs like libvorbis and libopus use VBR quality modes by default
         // and reject arbitrary CBR bitrates (libopus caps at 256 kbps; libvorbis

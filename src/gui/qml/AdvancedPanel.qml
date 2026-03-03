@@ -7,29 +7,28 @@ Column {
     spacing: 0
 
     // ── Exposed properties ────────────────────────────────────────────────────
-    // Set by FilePanel to drive relevant codec presets
     property string targetExt: ""
 
-    property string videoCodec:   ""
-    property string audioCodec:   ""
-    property string videoBitrate: ""
-    property string audioBitrate: ""
-    property string resolution:   ""
-    property string framerate:    ""
-    property string crfValue:     ""
+    property string videoCodec:    ""
+    property string audioCodec:    ""
+    property string videoBitrate:  ""    // VBR target bitrate
+    property string videoMaxRate:  ""    // VBR max bitrate
+    property string audioBitrate:  ""
+    property string resolution:    ""
+    property string framerate:     ""
+    property string crfValue:      ""
+    property string rateMode:      "crf"  // "crf" | "vbr1" | "vbr2"
     property bool   forceOverwrite: false
 
     property bool expanded: false
     property var  presentCategories: []
 
-    // Show video fields only when every file in the list is a Video file
     property bool showVideoFields: {
         if (presentCategories.length === 0) return true
         for (var i = 0; i < presentCategories.length; i++)
             if (presentCategories[i] !== "Video") return false
         return true
     }
-    // Show audio fields only when every file is Video or Audio
     property bool showAudioFields: {
         if (presentCategories.length === 0) return true
         for (var j = 0; j < presentCategories.length; j++)
@@ -37,7 +36,6 @@ Column {
         return true
     }
 
-    // Dynamic codec lists that update when targetExt changes
     property var videoCodecOptions: {
         var ext = adv.targetExt
         if (ext === "webm") return ["libvpx-vp9","libvpx","libaom-av1"]
@@ -58,44 +56,56 @@ Column {
         return ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
     }
 
-    // Apply a preset object (from bridge.codecPresetsFor) to all fields
+    // VBR only makes sense for video containers
+    property bool supportsVBR: {
+        var ext = adv.targetExt
+        return ext === "mp4" || ext === "mkv" || ext === "mov" || ext === "webm"
+            || ext === "avi" || ext === "ts"  || ext === "m4v" || ext === ""
+    }
+
+    // Apply a preset — handles both CRF and VBR presets
     function applyPreset(p) {
         videoCodec   = p.videoCodec   || ""
         audioCodec   = p.audioCodec   || ""
         audioBitrate = p.audioBitrate || ""
-        crfValue     = (p.crf !== undefined && p.crf !== "") ? String(p.crf) : ""
         vcInput.setValue(videoCodec)
         acInput.setValue(audioCodec)
         abInput.setValue(audioBitrate)
-        crfInput.setValue(crfValue)
+
+        if (p.rateMode === "vbr1" || p.rateMode === "vbr2") {
+            rateMode     = p.rateMode
+            videoBitrate = p.videoBitrate || ""
+            videoMaxRate = p.videoMaxRate || ""
+            crfValue     = ""
+            vbTarget.setValue(videoBitrate)
+            vbMax.setValue(videoMaxRate)
+            crfInput.setValue("")
+        } else {
+            rateMode     = "crf"
+            crfValue     = (p.crf !== undefined && p.crf !== "") ? String(p.crf) : ""
+            videoBitrate = ""; videoMaxRate = ""
+            crfInput.setValue(crfValue)
+            vbTarget.setValue(""); vbMax.setValue("")
+        }
     }
 
     // ── Expand/collapse divider ───────────────────────────────────────────────
     Item {
-        width: parent.width
-        height: 32
-
+        width: parent.width; height: 32
+        Rectangle { anchors.verticalCenter: parent.verticalCenter
+            width: parent.width; height: 1; color: root.border }
         Rectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width; height: 1; color: root.border
-        }
-        Rectangle {
-            anchors.centerIn: parent
-            color: root.bg
-            width: toggleRow.implicitWidth + 16
-            height: 24
-            Row {
-                id: toggleRow; anchors.centerIn: parent; spacing: 6
+            anchors.centerIn: parent; color: root.bg
+            width: toggleRow.implicitWidth + 16; height: 24
+            Row { id: toggleRow; anchors.centerIn: parent; spacing: 6
                 Text { anchors.verticalCenter: parent.verticalCenter
                     text: adv.expanded ? "▼" : "▲"; font.pixelSize: 9; color: root.textDim }
                 Text { anchors.verticalCenter: parent.verticalCenter
                     text: "GLOBAL ADVANCED OPTIONS"; font.pixelSize: 9; font.bold: true
                     font.family: root.appFont; font.letterSpacing: 2; color: root.textDim }
             }
-            MouseArea {
-                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                onClicked: adv.expanded = !adv.expanded
-            }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                onClicked: adv.expanded = !adv.expanded }
         }
     }
 
@@ -112,64 +122,152 @@ Column {
             anchors.left: parent.left; anchors.right: parent.right
             spacing: 14
 
-            // ── Codec presets ─────────────────────────────────────────────────
+            // ── Preset cards — drag-scrollable, no scrollbars ─────────────────
             Column {
-                width: parent.width
-                spacing: 6
+                width: parent.width; spacing: 6
                 visible: presetsRepeater.count > 0
 
                 Text {
-                    text: "PRESETS  —  click to fill settings below"
+                    text: "PRESETS  —  click to apply"
                     font.pixelSize: 9; font.bold: true; font.family: root.appFont
                     font.letterSpacing: 2; color: root.textDim
                 }
 
-                ScrollView {
-                    width: parent.width; height: 90
-                    ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff; clip: true
+                Item {
+                    width: parent.width; height: 88; clip: true
 
-                    Row {
-                        id: presetFlow; spacing: 6; height: 90
+                    Item {
+                        id: presetTrack
+                        height: parent.height
+                        width: Math.max(presetClipArea.width, presetsRow.implicitWidth + 4)
+                        property real minX: presetClipArea.width - width
+                        property real maxX: 0.0
+                        x: 0
 
-                        Repeater {
-                            id: presetsRepeater
-                            model: adv.targetExt !== "" ? bridge.codecPresetsFor(adv.targetExt) : []
+                        property alias clipAreaRef: presetClipArea
 
-                            Rectangle {
-                                width: 160
-                                height: 80
-                                radius: 8
-                                clip: true
-                                color: pMa.containsMouse ? root.surfaceHi : root.surface
-                                border.color: pMa.containsMouse ? root.accent : root.border
-                                border.width: 1
-                                Behavior on color      { ColorAnimation { duration: 80 } }
-                                Behavior on border.color { ColorAnimation { duration: 80 } }
+                        Row {
+                            id: presetsRow; x: 0; y: 0; height: parent.height; spacing: 6
 
-                                Column {
-                                    id: pCol
-                                    anchors.left: parent.left; anchors.right: parent.right
-                                    anchors.top: parent.top
-                                    anchors.margins: 9
-                                    spacing: 3
-                                    Text {
-                                        text: modelData.name
-                                        font.pixelSize: 11; font.family: root.appFont
-                                        color: root.textPrim; font.bold: true
-                                        width: parent.width; wrapMode: Text.WordWrap
+                            Repeater {
+                                id: presetsRepeater
+                                model: adv.targetExt !== "" ? bridge.codecPresetsFor(adv.targetExt) : []
+
+                                Rectangle {
+                                    width: 154; height: 82; radius: 8; clip: true
+                                    color: cardMa.containsMouse && !dragH.active
+                                           ? root.surfaceHi : root.surface
+                                    border.width: 1
+                                    border.color: cardMa.containsMouse && !dragH.active
+                                                  ? root.accent : root.border
+                                    Behavior on color        { ColorAnimation { duration: 80 } }
+                                    Behavior on border.color { ColorAnimation { duration: 80 } }
+
+                                    // VBR badge
+                                    Rectangle {
+                                        visible: modelData.rateMode === "vbr1" || modelData.rateMode === "vbr2"
+                                        anchors.top: parent.top; anchors.right: parent.right
+                                        anchors.topMargin: 5; anchors.rightMargin: 5
+                                        width: badgeLbl.implicitWidth + 8; height: 14; radius: 3
+                                        color: "#0e1e2e"; border.color: "#4488bb"; border.width: 1
+                                        Text { id: badgeLbl; anchors.centerIn: parent
+                                            text: modelData.rateMode === "vbr2" ? "VBR 2-pass" : "VBR"
+                                            font.pixelSize: 8; font.family: root.appFont
+                                            font.bold: true; color: "#88ccee" }
                                     }
-                                    Text {
-                                        text: modelData.desc
-                                        font.pixelSize: 9; font.family: root.appFont
-                                        color: root.textDim; width: parent.width
-                                        wrapMode: Text.WordWrap
+
+                                    Column {
+                                        anchors { left: parent.left; right: parent.right
+                                                  top: parent.top; margins: 8 }
+                                        spacing: 3
+                                        Text { text: modelData.name
+                                            font.pixelSize: 11; font.family: root.appFont
+                                            color: root.textPrim; font.bold: true
+                                            width: parent.width - 2; wrapMode: Text.WordWrap }
+                                        Text { text: modelData.desc
+                                            font.pixelSize: 9; font.family: root.appFont
+                                            color: root.textDim; width: parent.width - 2
+                                            wrapMode: Text.WordWrap }
                                     }
+
+                                    MouseArea { id: cardMa; anchors.fill: parent
+                                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                        onClicked: { if (!dragH.active) adv.applyPreset(modelData) } }
                                 }
-                                MouseArea {
-                                    id: pMa; anchors.fill: parent
-                                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                    onClicked: adv.applyPreset(modelData)
+                            }
+                        }
+
+                        DragHandler {
+                            id: dragH
+                            xAxis.enabled: true; yAxis.enabled: false
+                            xAxis.minimum: presetTrack.minX
+                            xAxis.maximum: presetTrack.maxX
+                        }
+                    }
+
+                    // Fade edges hint at more content
+                    Rectangle {
+                        anchors.left: parent.left; anchors.top: parent.top
+                        anchors.bottom: parent.bottom; width: 24
+                        visible: presetTrack.x < -2
+                        gradient: Gradient { orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: root.bg }
+                            GradientStop { position: 1.0; color: "transparent" } }
+                    }
+                    Rectangle {
+                        anchors.right: parent.right; anchors.top: parent.top
+                        anchors.bottom: parent.bottom; width: 24
+                        visible: presetTrack.x > presetTrack.minX + 2
+                        gradient: Gradient { orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "transparent" }
+                            GradientStop { position: 1.0; color: root.bg } }
+                    }
+
+                    // Capture ID for width reference
+                    Item { id: presetClipArea; anchors.fill: parent }
+                }
+            }
+
+            // ── Rate mode selector ────────────────────────────────────────────
+            Column {
+                width: parent.width; spacing: 6
+                visible: adv.showVideoFields && adv.supportsVBR
+
+                Text { text: "RATE CONTROL"
+                    font.pixelSize: 9; font.bold: true; font.family: root.appFont
+                    font.letterSpacing: 2; color: root.textDim }
+
+                Row {
+                    spacing: 6
+                    Repeater {
+                        model: [
+                            { id: "crf",  label: "CRF",        tip: "Quality-based — best for local files.\nLower number = higher quality.\nFile size varies based on content." },
+                            { id: "vbr1", label: "VBR 1-pass", tip: "Variable bitrate, single pass.\nFast encode, targets a bitrate.\nGood for streaming or delivery." },
+                            { id: "vbr2", label: "VBR 2-pass", tip: "Variable bitrate, two passes.\nBest bitrate accuracy.\nTwice as slow — worth it for final exports." },
+                        ]
+                        Rectangle {
+                            property bool active: adv.rateMode === modelData.id
+                            width: rmLbl.implicitWidth + 20; height: 26; radius: 7
+                            color: active ? "#1a2a1a" : (rmMa.containsMouse ? root.surfaceHi : root.surface)
+                            border.color: active ? root.accent : root.border
+                            border.width: active ? 1.5 : 1
+                            Behavior on color        { ColorAnimation { duration: 80 } }
+                            Behavior on border.color { ColorAnimation { duration: 80 } }
+                            Text { id: rmLbl; anchors.centerIn: parent; text: modelData.label
+                                font.pixelSize: 11; font.family: root.appFont; font.bold: active
+                                color: active ? root.accent : root.textDim }
+                            MouseArea { id: rmMa; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse; ToolTip.delay: 300
+                                ToolTip.text: modelData.tip
+                                onClicked: {
+                                    adv.rateMode = modelData.id
+                                    if (modelData.id === "crf") {
+                                        adv.videoBitrate = ""; adv.videoMaxRate = ""
+                                        vbTarget.setValue(""); vbMax.setValue("")
+                                    } else {
+                                        adv.crfValue = ""; crfInput.setValue("")
+                                    }
                                 }
                             }
                         }
@@ -182,148 +280,98 @@ Column {
                 width: parent.width
                 columns: 4; columnSpacing: 12; rowSpacing: 8
 
-                // helper: field label + ? tooltip + text input
-                // We use explicit items for reliable two-way binding with applyPreset()
-
                 // Video Codec
-                ColumnLayout {
-                    spacing: 4
-                    visible: adv.showVideoFields
-                    AdvFieldLabel {
-                        label: "Video Codec"
-                        tip: "FFmpeg video encoder.\nCPU: libx264 (H.264), libx265 (H.265/HEVC), libaom-av1 (AV1).\nGPU (NVIDIA): h264_nvenc, hevc_nvenc.\nGPU (macOS): h264_videotoolbox.\nLeave blank for format default."
-                    }
-                    FieldDropdown {
-                        id: vcInput; hint: "libx264, hevc_nvenc"
+                ColumnLayout { spacing: 4; visible: adv.showVideoFields
+                    AdvFieldLabel { label: "Video Codec"
+                        tip: "FFmpeg video encoder.\nCPU: libx264 (H.264), libx265 (H.265), libaom-av1 (AV1).\nGPU NVIDIA: h264_nvenc, hevc_nvenc.\nGPU Apple: h264_videotoolbox.\nLeave blank for format default." }
+                    FieldDropdown { id: vcInput; hint: "libx264, hevc_nvenc"
                         options: adv.videoCodecOptions
-                        onValueChanged: adv.videoCodec = value
-                    }
+                        onValueChanged: adv.videoCodec = value }
                 }
 
                 // Audio Codec
-                ColumnLayout {
-                    spacing: 4
-                    visible: adv.showAudioFields
-                    AdvFieldLabel {
-                        label: "Audio Codec"
-                        tip: "FFmpeg audio encoder.\naac — AAC, best for MP4/MOV.\nlibopus — Opus, best for WebM/OGG.\nlibmp3lame — MP3.\nflac — lossless FLAC.\npcm_s16le — uncompressed WAV.\nLeave blank for format default."
-                    }
-                    FieldDropdown {
-                        id: acInput; hint: "aac, libopus"
+                ColumnLayout { spacing: 4; visible: adv.showAudioFields
+                    AdvFieldLabel { label: "Audio Codec"
+                        tip: "FFmpeg audio encoder.\naac — best for MP4/MOV.\nlibopus — best for WebM/OGG.\nlibmp3lame — MP3.\nflac — lossless.\npcm_s16le — uncompressed WAV.\nLeave blank for format default." }
+                    FieldDropdown { id: acInput; hint: "aac, libopus"
                         options: adv.audioCodecOptions
-                        onValueChanged: adv.audioCodec = value
-                    }
+                        onValueChanged: adv.audioCodec = value }
                 }
 
-                // Video Bitrate
-                ColumnLayout {
-                    spacing: 4
-                    visible: adv.showVideoFields
-                    AdvFieldLabel {
-                        label: "Video Bitrate"
-                        tip: "Target video bitrate.\nUse 'k' for kbps (e.g. 800k) or 'M' for Mbps (e.g. 2M).\nLeave blank to use CRF quality-based encoding instead.\nTip: 4K ~15–40M, 1080p ~4–8M, 720p ~1.5–4M."
-                    }
-                    FieldDropdown {
-                        id: vbInput; hint: "2M, 500k"
-                        options: ["500k","1M","2M","4M","6M","8M","15M","30M"]
-                        onValueChanged: adv.videoBitrate = value
-                    }
+                // CRF (hidden when VBR selected)
+                ColumnLayout { spacing: 4
+                    visible: adv.showVideoFields && adv.rateMode === "crf"
+                    AdvFieldLabel { label: "CRF Quality"
+                        tip: "Constant Rate Factor.\nH.264: 18 = near-lossless, 23 = default, 28 = smaller.\nH.265: ~4 lower than H.264 for same quality (28 ≈ H.264 23).\nVP9: 0–63, default 31.\nAV1: 0–63, ~30 is balanced." }
+                    FieldDropdown { id: crfInput; hint: "23 (H.264 default)"
+                        options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
+                        onValueChanged: adv.crfValue = value }
+                }
+
+                // VBR Target Bitrate (hidden when CRF)
+                ColumnLayout { spacing: 4
+                    visible: adv.showVideoFields && adv.rateMode !== "crf"
+                    AdvFieldLabel { label: "Target Bitrate"
+                        tip: "VBR target video bitrate.\nEncoder averages near this value.\n4K → 15–40M, 1080p → 4–8M, 720p → 1.5–4M.\nUse 'k' for kbps or 'M' for Mbps." }
+                    FieldDropdown { id: vbTarget; hint: "4M, 8M"
+                        options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"]
+                        onValueChanged: adv.videoBitrate = value }
+                }
+
+                // VBR Max Bitrate (hidden when CRF)
+                ColumnLayout { spacing: 4
+                    visible: adv.showVideoFields && adv.rateMode !== "crf"
+                    AdvFieldLabel { label: "Max Bitrate"
+                        tip: "VBR maximum bitrate cap.\nPrevents spikes in complex scenes.\nTypically 1.5–2× your target bitrate.\nLeave blank for no cap." }
+                    FieldDropdown { id: vbMax; hint: "leave blank or 2× target"
+                        options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"]
+                        onValueChanged: adv.videoMaxRate = value }
                 }
 
                 // Audio Bitrate
-                ColumnLayout {
-                    spacing: 4
-                    visible: adv.showAudioFields
-                    AdvFieldLabel {
-                        label: "Audio Bitrate"
-                        tip: "Target audio bitrate.\nCommon values: 96k (voice), 128k (acceptable), 192k (good), 320k (high quality).\nNot used for lossless codecs (flac, pcm_*).\nLibopus has a 510k maximum."
-                    }
-                    FieldDropdown {
-                        id: abInput; hint: "192k, 320k"
+                ColumnLayout { spacing: 4; visible: adv.showAudioFields
+                    AdvFieldLabel { label: "Audio Bitrate"
+                        tip: "Target audio bitrate.\n96k — voice.\n128k — acceptable.\n192k — good.\n320k — high quality.\nNot used for lossless (flac, pcm_*)." }
+                    FieldDropdown { id: abInput; hint: "192k, 320k"
                         options: ["64k","96k","128k","192k","256k","320k"]
-                        onValueChanged: adv.audioBitrate = value
-                    }
+                        onValueChanged: adv.audioBitrate = value }
                 }
 
                 // Resolution
-                ColumnLayout {
-                    spacing: 4
-                    visible: adv.showVideoFields
-                    AdvFieldLabel {
-                        label: "Resolution"
-                        tip: "Output video resolution as WxH.\nExamples: 3840x2160 (4K), 1920x1080 (FHD), 1280x720 (HD), 854x480 (SD).\nLeave blank to keep source resolution.\nAspect ratio is not automatically preserved — use ffmpeg -vf scale=-2:720 via codec flag if needed."
-                    }
-                    AdvTextInput {
-                        id: resInput; hint: "1920x1080"
-                        onTextChanged: adv.resolution = text
-                    }
+                ColumnLayout { spacing: 4; visible: adv.showVideoFields
+                    AdvFieldLabel { label: "Resolution"
+                        tip: "Output resolution as WxH.\n3840x2160 (4K), 1920x1080, 1280x720, 854x480.\nLeave blank to keep source resolution." }
+                    AdvTextInput { id: resInput; hint: "1920x1080"
+                        onTextChanged: adv.resolution = text }
                 }
 
                 // Framerate
-                ColumnLayout {
-                    spacing: 4
-                    visible: adv.showVideoFields
-                    AdvFieldLabel {
-                        label: "Framerate"
-                        tip: "Output frames per second.\nCommon values: 23.976 (film NTSC), 24 (cinema), 25 (PAL/broadcast), 29.97 / 30, 50, 59.94 / 60 (gaming/sports).\nLeave blank to keep source framerate."
-                    }
-                    AdvTextInput {
-                        id: fpsInput; hint: "24, 30, 60"
-                        onTextChanged: adv.framerate = text
-                    }
-                }
-
-                // CRF
-                ColumnLayout {
-                    spacing: 4
-                    visible: adv.showVideoFields
-                    AdvFieldLabel {
-                        label: "CRF Quality"
-                        tip: "Constant Rate Factor — quality-based encoding.\nH.264: 18 = visually lossless, 23 = default, 28 = smaller/reduced quality.\nH.265: ~4 lower for equivalent quality (e.g. 22 ≈ H.264 at 26).\nVP9: 0–63, lower is better (default 31).\nIgnored when Video Bitrate is set."
-                    }
-                    FieldDropdown {
-                        id: crfInput; hint: "0–51  (lower = better)"
-                        options: ["18","20","22","23","26","28","30","35"]
-                        onValueChanged: adv.crfValue = value
-                    }
+                ColumnLayout { spacing: 4; visible: adv.showVideoFields
+                    AdvFieldLabel { label: "Framerate"
+                        tip: "Output frames per second.\n24 (cinema), 25 (PAL), 30, 60 (gaming/sports).\nLeave blank to keep source framerate." }
+                    AdvTextInput { id: fpsInput; hint: "24, 30, 60"
+                        onTextChanged: adv.framerate = text }
                 }
 
                 // Force overwrite
-                ColumnLayout {
-                    spacing: 4
-                    Text {
-                        text: "Overwrite"
-                        font.pixelSize: 10; font.family: root.appFont
-                        color: root.textDim; font.letterSpacing: 0.5
-                    }
-                    Rectangle {
-                        width: 170; height: 28; radius: 7
+                ColumnLayout { spacing: 4
+                    Text { text: "Overwrite"; font.pixelSize: 10; font.family: root.appFont
+                        color: root.textDim; font.letterSpacing: 0.5 }
+                    Rectangle { width: 170; height: 28; radius: 7
                         color: adv.forceOverwrite ? "#3a2020" : root.surfaceHi
-                        border.color: adv.forceOverwrite ? root.errorClr : root.border
-                        border.width: 1
+                        border.color: adv.forceOverwrite ? root.errorClr : root.border; border.width: 1
                         Behavior on color { ColorAnimation { duration: 100 } }
-                        Row {
-                            anchors.centerIn: parent; spacing: 7
-                            Rectangle {
-                                width: 12; height: 12; radius: 3
+                        Row { anchors.centerIn: parent; spacing: 7
+                            Rectangle { width: 12; height: 12; radius: 3
                                 color: adv.forceOverwrite ? root.errorClr : "transparent"
-                                border.color: adv.forceOverwrite ? root.errorClr : root.textDim
-                                border.width: 1.5
-                                Behavior on color { ColorAnimation { duration: 80 } }
-                            }
-                            Text {
-                                text: adv.forceOverwrite
-                                      ? "on — replaces existing files"
-                                      : "off — ask before replacing"
+                                border.color: adv.forceOverwrite ? root.errorClr : root.textDim; border.width: 1.5
+                                Behavior on color { ColorAnimation { duration: 80 } } }
+                            Text { text: adv.forceOverwrite ? "on — replaces existing files"
+                                                            : "off — ask before replacing"
                                 font.pixelSize: 10; font.family: root.appFont
-                                color: adv.forceOverwrite ? root.errorClr : root.textDim
-                            }
-                        }
-                        MouseArea {
-                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: adv.forceOverwrite = !adv.forceOverwrite
-                        }
-                    }
+                                color: adv.forceOverwrite ? root.errorClr : root.textDim } }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: adv.forceOverwrite = !adv.forceOverwrite } }
                 }
             }
         }
@@ -334,43 +382,26 @@ Column {
         property string label: ""
         property string tip:   ""
         spacing: 4
-        Text {
-            text: label
-            font.pixelSize: 10; font.family: root.appFont
-            color: root.textDim; font.letterSpacing: 0.5
-        }
-        // ? help icon with ToolTip
-        Rectangle {
-            width: 14; height: 14; radius: 7
+        Text { text: label; font.pixelSize: 10; font.family: root.appFont
+            color: root.textDim; font.letterSpacing: 0.5 }
+        Rectangle { width: 14; height: 14; radius: 7
             color: hMa.containsMouse ? root.border : "transparent"
-            border.color: hMa.containsMouse ? root.accent : root.textDim
-            border.width: 1
+            border.color: hMa.containsMouse ? root.accent : root.textDim; border.width: 1
             Text { anchors.centerIn: parent; text: "?"; font.pixelSize: 8; color: root.textDim }
-            MouseArea {
-                id: hMa; anchors.fill: parent
-                hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                ToolTip.visible: containsMouse
-                ToolTip.delay: 200
-                ToolTip.timeout: 12000
-                ToolTip.text: tip
-            }
-        }
+            MouseArea { id: hMa; anchors.fill: parent; hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                ToolTip.visible: containsMouse; ToolTip.delay: 200
+                ToolTip.timeout: 12000; ToolTip.text: tip } }
     }
 
     component AdvTextInput: Rectangle {
         property alias text: ti.text
         property string hint: ""
-        width: 170; height: 28; radius: 7
-        color: root.surfaceHi
-        border.color: ti.activeFocus ? root.accent : root.border
-        border.width: 1
-        TextInput {
-            id: ti; anchors.fill: parent; anchors.margins: 6
+        width: 170; height: 28; radius: 7; color: root.surfaceHi
+        border.color: ti.activeFocus ? root.accent : root.border; border.width: 1
+        TextInput { id: ti; anchors.fill: parent; anchors.margins: 6
             font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
-            Text {
-                anchors.fill: parent; text: parent.parent.hint; font: parent.font
-                color: root.textDim; visible: parent.text.length === 0 && !parent.activeFocus
-            }
-        }
+            Text { anchors.fill: parent; text: parent.parent.hint; font: parent.font
+                color: root.textDim; visible: parent.text.length === 0 && !parent.activeFocus } }
     }
 }

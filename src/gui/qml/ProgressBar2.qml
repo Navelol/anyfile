@@ -13,9 +13,12 @@ Item {
     property real displayValue: 0.0
 
     // When real value jumps to 1.0 (done), honour it immediately.
+    // When it resets to 0.0 (new conversion starting), snap displayValue back to 0.
     // Otherwise, let the fake timer drive displayValue forward.
     onValueChanged: {
-        if (value >= 1.0) {
+        if (value <= 0.0) {
+            displayValue = 0.0   // reset for next conversion
+        } else if (value >= 1.0) {
             displayValue = 1.0
         } else if (value > displayValue) {
             displayValue = value
@@ -72,6 +75,7 @@ Item {
             spacing: 12
 
             Text {
+                visible: bar.displayValue > 0.0 || bridge.converting
                 text: Math.round(bar.displayValue * 100) + "%"
                 font.pixelSize: 11
                 font.bold: true

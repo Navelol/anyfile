@@ -250,78 +250,80 @@ public:
     // ── Codec presets for a given output extension ────────────────────────────
     Q_INVOKABLE QVariantList codecPresetsFor(const QString& outputExt) const {
         struct Preset {
-            QString name, desc, videoCodec, audioCodec;
-            int     crf;           // -1 = not set
-            QString audioBitrate;  // "" = not set
-            QString extraArgs;     // passed as videoCodec suffix hint (unused by engine but shown)
+            QString name, desc, videoCodec, audioCodec, rateMode;
+            int     crf;           // -1 = not applicable (VBR mode or no rate control)
+            QString audioBitrate;
+            QString videoBitrate;  // VBR target
+            QString videoMaxRate;  // VBR max
         };
         using PL = QList<Preset>;
 
-        // CRF reference (from ffmpeg.org wiki + slhck.info research):
-        //   H.264:  18 = visually lossless, 23 = default, 28 = smaller
-        //   H.265:  ~4 higher than H.264 equivalent (22 ≈ H.264 18, 28 ≈ H.264 23)
-        //   VP9:    31 = default, 24 = high quality, 33 = smaller (range 0-63)
-        //   AV1:    30 = good balance (range 0-63); always needs cpu-used for speed
+        // CRF reference (ffmpeg.org wiki + slhck.info research):
+        //   H.264:  17 = near-lossless, 23 = default, 28 = smaller
+        //   H.265:  22 ≈ H.264 18, 28 ≈ H.264 23  (same quality ~4pts lower number)
+        //   VP9:    24 = high, 31 = default, 40 = smaller  (0-63 scale)
+        //   AV1:    22 = high quality, 30 = balanced  (0-63 scale)
+        // VBR: 1080p typical 4–8M target, max 1.5–2× target
         static const QHash<QString, PL> table {
             {"mp4", PL{
-                {"H.264 · Balanced",    "CRF 23 · best compatibility · fast encode",    "libx264",    "aac",      23, "192k"},
-                {"H.264 · High Quality","CRF 18 · visually lossless · larger file",     "libx264",    "aac",      18, "192k"},
-                {"H.264 · Small File",  "CRF 28 · ~40% smaller · acceptable quality",  "libx264",    "aac",      28, "128k"},
-                {"H.265 / HEVC",        "CRF 28 ≈ H.264 CRF 23 · ~50% smaller file",  "libx265",    "aac",      28, "192k"},
-                {"H.265 · High Quality","CRF 22 · near-lossless · modern players",     "libx265",    "aac",      22, "192k"},
-                {"H.264 NVENC",         "GPU-accelerated H.264 · NVIDIA only",          "h264_nvenc", "aac",      -1, "192k"},
-                {"H.265 NVENC",         "GPU-accelerated HEVC · NVIDIA only",           "hevc_nvenc", "aac",      -1, "192k"},
+                {"H.264 · Balanced",     "CRF 23 · best compat · good quality",         "libx264",    "aac",      "crf",  23, "192k", "",    ""},
+                {"H.264 · High Quality", "CRF 17 · near-lossless · larger file",        "libx264",    "aac",      "crf",  17, "192k", "",    ""},
+                {"H.264 · Small File",   "CRF 28 · ~40% smaller · acceptable quality",  "libx264",    "aac",      "crf",  28, "128k", "",    ""},
+                {"H.264 · VBR 1-pass",   "8M target · 12M max · fast encode",           "libx264",    "aac",      "vbr1", -1, "192k", "8M",  "12M"},
+                {"H.264 · VBR 2-pass",   "8M target · 12M max · best bitrate accuracy", "libx264",    "aac",      "vbr2", -1, "192k", "8M",  "12M"},
+                {"H.265 · Balanced",     "CRF 22 ≈ H.264 CRF 18 · ~50% smaller file",  "libx265",    "aac",      "crf",  22, "192k", "",    ""},
+                {"H.265 · Small File",   "CRF 28 ≈ H.264 CRF 23 · great compression",  "libx265",    "aac",      "crf",  28, "128k", "",    ""},
+                {"H.264 NVENC",          "GPU-accelerated H.264 · NVIDIA only",         "h264_nvenc", "aac",      "crf",  -1, "192k", "",    ""},
+                {"H.265 NVENC",          "GPU-accelerated HEVC · NVIDIA only",          "hevc_nvenc", "aac",      "crf",  -1, "192k", "",    ""},
             }},
             {"mkv", PL{
-                {"H.264 · Balanced",    "CRF 23 · good quality · wide compatibility",  "libx264",     "aac",      23, "192k"},
-                {"H.265 · Balanced",    "CRF 28 · ~50% smaller than H.264",            "libx265",     "aac",      28, "192k"},
-                {"VP9 + Opus",          "CRF 31 · open format · good for archiving",   "libvpx-vp9",  "libopus",  31, ""},
-                {"AV1 · Fast",          "CRF 30 · best compression · slow encode",     "libaom-av1",  "libopus",  30, ""},
-                {"H.264 NVENC",         "GPU-accelerated H.264 · NVIDIA only",         "h264_nvenc",  "aac",      -1, "192k"},
-                {"H.265 NVENC",         "GPU-accelerated HEVC · NVIDIA only",          "hevc_nvenc",  "aac",      -1, "192k"},
+                {"H.264 · Balanced",     "CRF 23 · wide compatibility",                 "libx264",    "aac",      "crf",  23, "192k", "",    ""},
+                {"H.264 · High Quality", "CRF 17 · near-lossless",                      "libx264",    "aac",      "crf",  17, "192k", "",    ""},
+                {"H.265 · Balanced",     "CRF 22 · ~50% smaller than H.264",            "libx265",    "aac",      "crf",  22, "192k", "",    ""},
+                {"VP9 · Balanced",       "CRF 31 · open format · Opus audio",           "libvpx-vp9", "libopus",  "crf",  31, "",     "",    ""},
+                {"VP9 · High Quality",   "CRF 24 · excellent quality",                  "libvpx-vp9", "libopus",  "crf",  24, "",     "",    ""},
+                {"AV1 · High Quality",   "CRF 22 · best compression · slow encode",     "libaom-av1", "libopus",  "crf",  22, "",     "",    ""},
+                {"H.264 · VBR 2-pass",   "8M target · 12M max · best accuracy",         "libx264",    "aac",      "vbr2", -1, "192k", "8M",  "12M"},
+                {"H.264 NVENC",          "GPU H.264 · NVIDIA only",                     "h264_nvenc", "aac",      "crf",  -1, "192k", "",    ""},
+                {"H.265 NVENC",          "GPU HEVC · NVIDIA only",                      "hevc_nvenc", "aac",      "crf",  -1, "192k", "",    ""},
             }},
             {"webm", PL{
-                {"VP9 · Balanced",      "CRF 31 · default · good browser support",     "libvpx-vp9",  "libopus",  31, ""},
-                {"VP9 · High Quality",  "CRF 24 · excellent quality · larger file",    "libvpx-vp9",  "libopus",  24, ""},
-                {"VP9 · Small File",    "CRF 40 · smaller file · good for web",        "libvpx-vp9",  "libopus",  40, ""},
-                {"AV1 · Fast",          "CRF 30 · best compression · very slow",       "libaom-av1",  "libopus",  30, ""},
-                {"VP8 · Compat",        "Older format · maximum compatibility",        "libvpx",      "libvorbis",-1, ""},
+                {"VP9 · Balanced",       "CRF 31 · default · good browser support",     "libvpx-vp9", "libopus",  "crf",  31, "",     "",    ""},
+                {"VP9 · High Quality",   "CRF 24 · excellent quality",                  "libvpx-vp9", "libopus",  "crf",  24, "",     "",    ""},
+                {"VP9 · Small File",     "CRF 40 · smaller · great for web",            "libvpx-vp9", "libopus",  "crf",  40, "",     "",    ""},
+                {"VP9 · VBR 1-pass",     "4M target · 6M max · for delivery",           "libvpx-vp9", "libopus",  "vbr1", -1, "",     "4M",  "6M"},
+                {"AV1 · High Quality",   "CRF 22 · best compression · very slow",       "libaom-av1", "libopus",  "crf",  22, "",     "",    ""},
+                {"VP8 · Compat",         "Older format · maximum compatibility",         "libvpx",     "libvorbis","crf",  -1, "",     "",    ""},
             }},
             {"mov", PL{
-                {"H.264 · Balanced",    "CRF 23 · Final Cut / QuickTime compatible",   "libx264",     "aac",      23, "192k"},
-                {"H.264 · High Quality","CRF 18 · visually lossless",                  "libx264",     "aac",      18, "192k"},
-                {"ProRes 422",          "Near-lossless · pro editing · large file",    "prores_ks",   "pcm_s16le",-1, ""},
+                {"H.264 · Balanced",     "CRF 23 · Final Cut / QuickTime",              "libx264",    "aac",      "crf",  23, "192k", "",    ""},
+                {"H.264 · High Quality", "CRF 17 · near-lossless",                      "libx264",    "aac",      "crf",  17, "192k", "",    ""},
+                {"ProRes 422",           "Near-lossless · pro editing · large file",    "prores_ks",  "pcm_s16le","crf",  -1, "",     "",    ""},
             }},
             {"avi", PL{
-                {"MPEG-4 · Compat",     "Widest AVI compatibility · 192k audio",       "mpeg4",       "libmp3lame",-1, "192k"},
+                {"MPEG-4 · Compat",      "Widest AVI compatibility",                    "mpeg4",      "libmp3lame","crf", -1, "192k", "",    ""},
             }},
             {"mp3", PL{
-                {"MP3 · 192k",          "Good quality · universal compatibility",       "",            "libmp3lame",-1, "192k"},
-                {"MP3 · 320k",          "High quality · larger file",                  "",            "libmp3lame",-1, "320k"},
-                {"MP3 · 128k",          "Smaller file · adequate for voice/podcasts",  "",            "libmp3lame",-1, "128k"},
+                {"MP3 · 192k",           "Good quality · universal",                    "", "libmp3lame","crf",  -1, "192k", "",  ""},
+                {"MP3 · 320k",           "High quality · larger file",                  "", "libmp3lame","crf",  -1, "320k", "",  ""},
+                {"MP3 · 128k",           "Smaller file · adequate for voice",           "", "libmp3lame","crf",  -1, "128k", "",  ""},
             }},
-            {"ogg", PL{
-                {"Vorbis · ~192k",      "VBR quality mode · good general purpose",     "",            "libvorbis", -1, ""},
-            }},
+            {"ogg",  PL{ {"Vorbis · ~192k", "VBR quality mode",              "", "libvorbis","crf", -1, "",     "", ""} }},
             {"opus", PL{
-                {"Opus · 128k",         "Excellent quality at low bitrate",            "",            "libopus",   -1, "128k"},
-                {"Opus · 64k",          "Very small · good for voice/calls",           "",            "libopus",   -1, "64k"},
-                {"Opus · 192k",         "High quality · music archiving",              "",            "libopus",   -1, "192k"},
+                {"Opus · 128k",  "Excellent at low bitrate",  "", "libopus","crf", -1, "128k", "", ""},
+                {"Opus · 192k",  "High quality · music",      "", "libopus","crf", -1, "192k", "", ""},
+                {"Opus · 64k",   "Very small · voice/calls",  "", "libopus","crf", -1, "64k",  "", ""},
             }},
-            {"flac", PL{
-                {"FLAC · Lossless",     "Bit-perfect audio · large file",              "",            "flac",      -1, ""},
+            {"flac", PL{ {"FLAC · Lossless", "Bit-perfect audio",            "", "flac",     "crf", -1, "",     "", ""} }},
+            {"wav",  PL{
+                {"PCM 16-bit", "Uncompressed · max compat",   "", "pcm_s16le","crf", -1, "",     "", ""},
+                {"PCM 24-bit", "Uncompressed · higher range", "", "pcm_s24le","crf", -1, "",     "", ""},
             }},
-            {"wav", PL{
-                {"PCM 16-bit",          "Uncompressed · maximum compatibility",        "",            "pcm_s16le", -1, ""},
-                {"PCM 24-bit",          "Uncompressed · higher dynamic range",         "",            "pcm_s24le", -1, ""},
+            {"aac",  PL{
+                {"AAC · 192k", "Good quality · MP4/MOV",      "", "aac",      "crf", -1, "192k", "", ""},
+                {"AAC · 256k", "High quality",                 "", "aac",      "crf", -1, "256k", "", ""},
             }},
-            {"aac", PL{
-                {"AAC · 192k",          "Good quality · native MP4/MOV support",       "",            "aac",       -1, "192k"},
-                {"AAC · 256k",          "High quality · larger file",                  "",            "aac",       -1, "256k"},
-            }},
-            {"gif", PL{
-                {"Standard GIF",        "Palette-optimised · full compatibility",      "",            "",          -1, ""},
-            }},
+            {"gif",  PL{ {"Standard GIF", "Palette-optimised · full compat", "", "",        "crf", -1, "",     "", ""} }},
         };
 
         auto it = table.find(outputExt);
@@ -334,8 +336,11 @@ public:
             m["desc"]         = p.desc;
             m["videoCodec"]   = p.videoCodec;
             m["audioCodec"]   = p.audioCodec;
+            m["rateMode"]     = p.rateMode;
             m["crf"]          = (p.crf >= 0) ? QVariant(p.crf) : QVariant(QString(""));
             m["audioBitrate"] = p.audioBitrate;
+            m["videoBitrate"] = p.videoBitrate;
+            m["videoMaxRate"] = p.videoMaxRate;
             result << m;
         }
         return result;
@@ -607,11 +612,20 @@ private:
         job.videoCodec   = getStr("videoCodec");
         job.audioCodec   = getStr("audioCodec");
         job.videoBitrate = getStr("videoBitrate");
+        job.videoMaxRate = getStr("videoMaxRate");
         job.audioBitrate = getStr("audioBitrate");
         job.resolution   = getStr("resolution");
         job.framerate    = getStr("framerate");
         job.pixelFormat  = getStr("pixelFormat");
         if (opts.contains("force")) job.force = opts.value("force").toBool();
+
+        // rateMode: "crf" (default), "vbr1" (1-pass VBR), "vbr2" (2-pass VBR)
+        if (opts.contains("rateMode")) {
+            QString rm = opts.value("rateMode").toString();
+            if (rm == "vbr1") job.twoPass = false;
+            if (rm == "vbr2") job.twoPass = true;
+            // "crf" → leave twoPass false, CRF is set below
+        }
 
         if (opts.contains("crf")) {
             bool ok;

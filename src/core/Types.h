@@ -76,7 +76,9 @@ struct ConversionJob {
     std::optional<std::string> videoCodec;
     std::optional<std::string> audioCodec;
     std::optional<std::string> videoBitrate;
+    std::optional<std::string> videoMaxRate;  // VBR max bitrate cap (e.g. "12M")
     std::optional<std::string> audioBitrate;
+    bool twoPass = false;  // true = VBR 2-pass encode
     std::optional<std::string> resolution;
     std::optional<std::string> framerate;
     std::optional<int>         crf;
