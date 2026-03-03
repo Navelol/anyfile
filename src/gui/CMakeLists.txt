@@ -45,6 +45,7 @@ qt_add_qml_module(anyfile_gui
         qml/AdvancedPanel.qml
         qml/ResultPanel.qml
         qml/ProgressBar2.qml
+        qml/FieldDropdown.qml
     SOURCES
         ConverterBridge.h
 )

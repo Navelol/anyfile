@@ -254,12 +254,16 @@ public:
             {"mp4", PL{
                 {"H.264 · Balanced",    "Best compatibility · good quality",            "libx264",     "aac",       18, ""},
                 {"H.264 · Small file",  "Smaller size, slight quality reduction",       "libx264",     "aac",       26, ""},
+                {"H.264 NVENC",         "GPU-accelerated H.264 (NVIDIA)",               "h264_nvenc",  "aac",       -1, ""},
                 {"H.265 / HEVC",        "~40% smaller than H.264, needs modern player", "libx265",     "aac",       20, ""},
+                {"H.265 NVENC",         "GPU-accelerated HEVC (NVIDIA)",                "hevc_nvenc",  "aac",       -1, ""},
                 {"AV1",                 "Best compression, very slow encode",           "libaom-av1",  "libopus",   30, ""},
             }},
             {"mkv", PL{
                 {"H.264 · Balanced",    "Best compatibility · good quality",            "libx264",     "aac",       18, ""},
+                {"H.264 NVENC",         "GPU-accelerated H.264 (NVIDIA)",               "h264_nvenc",  "aac",       -1, ""},
                 {"H.265 / HEVC",        "~40% smaller than H.264",                      "libx265",     "aac",       20, ""},
+                {"H.265 NVENC",         "GPU-accelerated HEVC (NVIDIA)",                "hevc_nvenc",  "aac",       -1, ""},
                 {"AV1",                 "Best compression, very slow encode",           "libaom-av1",  "libopus",   30, ""},
                 {"VP9 + Opus",          "Open format, good browser support",            "libvpx-vp9",  "libopus",   20, ""},
             }},

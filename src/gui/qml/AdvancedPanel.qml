@@ -20,6 +20,22 @@ Column {
     property bool   forceOverwrite: false
 
     property bool expanded: false
+    property var  presentCategories: []
+
+    // Show video fields only when every file in the list is a Video file
+    property bool showVideoFields: {
+        if (presentCategories.length === 0) return true
+        for (var i = 0; i < presentCategories.length; i++)
+            if (presentCategories[i] !== "Video") return false
+        return true
+    }
+    // Show audio fields only when every file is Video or Audio
+    property bool showAudioFields: {
+        if (presentCategories.length === 0) return true
+        for (var j = 0; j < presentCategories.length; j++)
+            if (presentCategories[j] !== "Video" && presentCategories[j] !== "Audio") return false
+        return true
+    }
 
     // Apply a preset object (from bridge.codecPresetsFor) to all fields
     function applyPreset(p) {
@@ -27,11 +43,10 @@ Column {
         audioCodec   = p.audioCodec   || ""
         audioBitrate = p.audioBitrate || ""
         crfValue     = (p.crf !== undefined && p.crf !== "") ? String(p.crf) : ""
-        // Sync text inputs explicitly (binding was broken by prior user edit)
-        vcInput.text  = videoCodec
-        acInput.text  = audioCodec
-        abInput.text  = audioBitrate
-        crfInput.text = crfValue
+        vcInput.setValue(videoCodec)
+        acInput.setValue(audioCodec)
+        abInput.setValue(audioBitrate)
+        crfInput.setValue(crfValue)
     }
 
     // ── Expand/collapse divider ───────────────────────────────────────────────
@@ -51,9 +66,9 @@ Column {
             Row {
                 id: toggleRow; anchors.centerIn: parent; spacing: 6
                 Text { anchors.verticalCenter: parent.verticalCenter
-                    text: adv.expanded ? "▲" : "▼"; font.pixelSize: 9; color: root.textDim }
+                    text: adv.expanded ? "▼" : "▲"; font.pixelSize: 9; color: root.textDim }
                 Text { anchors.verticalCenter: parent.verticalCenter
-                    text: "ADVANCED OPTIONS"; font.pixelSize: 9; font.bold: true
+                    text: "GLOBAL ADVANCED OPTIONS"; font.pixelSize: 9; font.bold: true
                     font.family: root.appFont; font.letterSpacing: 2; color: root.textDim }
             }
             MouseArea {
@@ -101,9 +116,10 @@ Column {
                             model: adv.targetExt !== "" ? bridge.codecPresetsFor(adv.targetExt) : []
 
                             Rectangle {
-                                width: pCol.implicitWidth + 18
-                                height: pCol.implicitHeight + 12
+                                width: 160
+                                height: pCol.implicitHeight + 14
                                 radius: 8
+                                clip: true
                                 color: pMa.containsMouse ? root.surfaceHi : root.surface
                                 border.color: pMa.containsMouse ? root.accent : root.border
                                 border.width: 1
@@ -111,16 +127,22 @@ Column {
                                 Behavior on border.color { ColorAnimation { duration: 80 } }
 
                                 Column {
-                                    id: pCol; anchors.centerIn: parent; spacing: 3
+                                    id: pCol
+                                    anchors.left: parent.left; anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 9
+                                    spacing: 3
                                     Text {
                                         text: modelData.name
                                         font.pixelSize: 11; font.family: root.appFont
                                         color: root.textPrim; font.bold: true
+                                        width: parent.width; wrapMode: Text.WordWrap
                                     }
                                     Text {
                                         text: modelData.desc
                                         font.pixelSize: 9; font.family: root.appFont
-                                        color: root.textDim; width: pCol.implicitWidth
+                                        color: root.textDim; width: parent.width
+                                        wrapMode: Text.WordWrap
                                     }
                                 }
                                 MouseArea {
@@ -145,58 +167,67 @@ Column {
                 // Video Codec
                 ColumnLayout {
                     spacing: 4
+                    visible: adv.showVideoFields
                     AdvFieldLabel {
                         label: "Video Codec"
                         tip: "FFmpeg video encoder.\nCPU: libx264 (H.264), libx265 (H.265/HEVC), libaom-av1 (AV1).\nGPU (NVIDIA): h264_nvenc, hevc_nvenc.\nGPU (macOS): h264_videotoolbox.\nLeave blank for format default."
                     }
-                    AdvTextInput {
+                    FieldDropdown {
                         id: vcInput; hint: "libx264, hevc_nvenc"
-                        onTextChanged: adv.videoCodec = text
+                        options: ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","h264_videotoolbox","libvpx-vp9","libvpx","prores_ks","mpeg4","copy"]
+                        onValueChanged: adv.videoCodec = value
                     }
                 }
 
                 // Audio Codec
                 ColumnLayout {
                     spacing: 4
+                    visible: adv.showAudioFields
                     AdvFieldLabel {
                         label: "Audio Codec"
                         tip: "FFmpeg audio encoder.\naac — AAC, best for MP4/MOV.\nlibopus — Opus, best for WebM/OGG.\nlibmp3lame — MP3.\nflac — lossless FLAC.\npcm_s16le — uncompressed WAV.\nLeave blank for format default."
                     }
-                    AdvTextInput {
+                    FieldDropdown {
                         id: acInput; hint: "aac, libopus"
-                        onTextChanged: adv.audioCodec = text
+                        options: ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
+                        onValueChanged: adv.audioCodec = value
                     }
                 }
 
                 // Video Bitrate
                 ColumnLayout {
                     spacing: 4
+                    visible: adv.showVideoFields
                     AdvFieldLabel {
                         label: "Video Bitrate"
                         tip: "Target video bitrate.\nUse 'k' for kbps (e.g. 800k) or 'M' for Mbps (e.g. 2M).\nLeave blank to use CRF quality-based encoding instead.\nTip: 4K ~15–40M, 1080p ~4–8M, 720p ~1.5–4M."
                     }
-                    AdvTextInput {
+                    FieldDropdown {
                         id: vbInput; hint: "2M, 500k"
-                        onTextChanged: adv.videoBitrate = text
+                        options: ["500k","1M","2M","4M","6M","8M","15M","30M"]
+                        onValueChanged: adv.videoBitrate = value
                     }
                 }
 
                 // Audio Bitrate
                 ColumnLayout {
                     spacing: 4
+                    visible: adv.showAudioFields
                     AdvFieldLabel {
                         label: "Audio Bitrate"
                         tip: "Target audio bitrate.\nCommon values: 96k (voice), 128k (acceptable), 192k (good), 320k (high quality).\nNot used for lossless codecs (flac, pcm_*).\nLibopus has a 510k maximum."
                     }
-                    AdvTextInput {
+                    FieldDropdown {
                         id: abInput; hint: "192k, 320k"
-                        onTextChanged: adv.audioBitrate = text
+                        options: ["64k","96k","128k","192k","256k","320k"]
+                        onValueChanged: adv.audioBitrate = value
                     }
                 }
 
                 // Resolution
                 ColumnLayout {
                     spacing: 4
+                    visible: adv.showVideoFields
                     AdvFieldLabel {
                         label: "Resolution"
                         tip: "Output video resolution as WxH.\nExamples: 3840x2160 (4K), 1920x1080 (FHD), 1280x720 (HD), 854x480 (SD).\nLeave blank to keep source resolution.\nAspect ratio is not automatically preserved — use ffmpeg -vf scale=-2:720 via codec flag if needed."
@@ -210,6 +241,7 @@ Column {
                 // Framerate
                 ColumnLayout {
                     spacing: 4
+                    visible: adv.showVideoFields
                     AdvFieldLabel {
                         label: "Framerate"
                         tip: "Output frames per second.\nCommon values: 23.976 (film NTSC), 24 (cinema), 25 (PAL/broadcast), 29.97 / 30, 50, 59.94 / 60 (gaming/sports).\nLeave blank to keep source framerate."
@@ -223,13 +255,15 @@ Column {
                 // CRF
                 ColumnLayout {
                     spacing: 4
+                    visible: adv.showVideoFields
                     AdvFieldLabel {
                         label: "CRF Quality"
                         tip: "Constant Rate Factor — quality-based encoding.\nH.264: 18 = visually lossless, 23 = default, 28 = smaller/reduced quality.\nH.265: ~4 lower for equivalent quality (e.g. 22 ≈ H.264 at 26).\nVP9: 0–63, lower is better (default 31).\nIgnored when Video Bitrate is set."
                     }
-                    AdvTextInput {
+                    FieldDropdown {
                         id: crfInput; hint: "0–51  (lower = better)"
-                        onTextChanged: adv.crfValue = text
+                        options: ["18","20","22","23","26","28","30","35"]
+                        onValueChanged: adv.crfValue = value
                     }
                 }
 
@@ -294,18 +328,10 @@ Column {
             MouseArea {
                 id: hMa; anchors.fill: parent
                 hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-            }
-            ToolTip {
-                parent: hMa; visible: hMa.containsMouse
-                text: tip; delay: 200; timeout: 12000
-                contentItem: Text {
-                    text: parent.text; font.pixelSize: 11; font.family: root.appFont
-                    color: root.textPrim; wrapMode: Text.Wrap; width: 280
-                }
-                background: Rectangle {
-                    color: root.surfaceHi; radius: 8
-                    border.color: root.accent; border.width: 1
-                }
+                ToolTip.visible: containsMouse
+                ToolTip.delay: 200
+                ToolTip.timeout: 12000
+                ToolTip.text: tip
             }
         }
     }
@@ -313,7 +339,6 @@ Column {
     component AdvTextInput: Rectangle {
         property alias text: ti.text
         property string hint: ""
-        signal textChanged(string t)
         width: 170; height: 28; radius: 7
         color: root.surfaceHi
         border.color: ti.activeFocus ? root.accent : root.border
@@ -321,7 +346,6 @@ Column {
         TextInput {
             id: ti; anchors.fill: parent; anchors.margins: 6
             font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
-            onTextChanged: parent.textChanged(text)
             Text {
                 anchors.fill: parent; text: parent.parent.hint; font: parent.font
                 color: root.textDim; visible: parent.text.length === 0 && !parent.activeFocus

@@ -14,6 +14,14 @@ Item {
     ListModel { id: batchModel }
     property string overrideExt: ""   // if set, all enabled rows use this ext
 
+    // Categories present in current batch (drives Global Advanced Options visibility)
+    property var presentCategories: {
+        var cats = {}
+        for (var i = 0; i < batchModel.count; i++)
+            cats[bridge.categoryFor(batchModel.get(i).sourceExt)] = true
+        return Object.keys(cats)
+    }
+
     // -- Folder mode state -----------------------------------------------------
     property string folderPath:    ""
     property var    folderFiles:   []
@@ -45,7 +53,11 @@ Item {
         var fmts = bridge.formatsFor(path)
         var tgt  = fmts.length > 0 ? fmts[0] : ""
         batchModel.append({ filePath: path, enabled: true, sourceExt: ext, targetExt: tgt,
-                            outputName: "", ovVideoCodec: "", ovAudioCodec: "", ovCrf: -1 })
+                            outputName: "", ovVideoCodec: "", ovAudioCodec: "",
+                            ovVideoBitrate: "", ovAudioBitrate: "", ovCrf: -1 })
+        // Reset global override if this file can't convert to it
+        if (panel.overrideExt !== "" && fmts.indexOf(panel.overrideExt) < 0)
+            panel.overrideExt = ""
     }
 
     function effectiveTarget(index) {
@@ -82,10 +94,12 @@ Item {
             var tgt = effectiveTarget(i)
             if (tgt === "") continue
             var spec = { path: item.filePath, ext: tgt }
-            if (item.outputName !== "")    spec.outputName  = item.outputName
-            if (item.ovVideoCodec !== "")  spec.videoCodec  = item.ovVideoCodec
-            if (item.ovAudioCodec !== "")  spec.audioCodec  = item.ovAudioCodec
-            if (item.ovCrf >= 0)           spec.crf         = item.ovCrf
+            if (item.outputName !== "")      spec.outputName    = item.outputName
+            if (item.ovVideoCodec !== "")    spec.videoCodec    = item.ovVideoCodec
+            if (item.ovAudioCodec !== "")    spec.audioCodec    = item.ovAudioCodec
+            if (item.ovVideoBitrate !== "")  spec.videoBitrate  = item.ovVideoBitrate
+            if (item.ovAudioBitrate !== "")  spec.audioBitrate  = item.ovAudioBitrate
+            if (item.ovCrf >= 0)             spec.crf           = item.ovCrf
             specs.push(spec)
         }
         return specs
@@ -139,11 +153,22 @@ Item {
     }
 
     function unionFormats() {
-        var seen = {}, result = []
+        if (batchModel.count === 0) return []
+        // Intersection: only formats every file can convert to
+        var sets = []
         for (var i = 0; i < batchModel.count; i++) {
             var fmts = bridge.formatsFor(batchModel.get(i).filePath)
-            for (var j = 0; j < fmts.length; j++)
-                if (!seen[fmts[j]]) { seen[fmts[j]] = true; result.push(fmts[j]) }
+            var s = {}
+            for (var j = 0; j < fmts.length; j++) s[fmts[j]] = true
+            sets.push(s)
+        }
+        var first = sets[0]
+        var result = []
+        for (var ext in first) {
+            var inAll = true
+            for (var k = 1; k < sets.length; k++)
+                if (!sets[k][ext]) { inAll = false; break }
+            if (inAll) result.push(ext)
         }
         return result.sort()
     }
@@ -424,17 +449,6 @@ Item {
                             font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
                     }
                 }
-
-                Rectangle {
-                    width: clrAllLbl.implicitWidth + 16; height: 28; radius: 7
-                    color: clrAllMa.containsMouse ? root.surfaceHi : root.surface
-                    border.color: root.border; border.width: 1
-                    Text { id: clrAllLbl; anchors.centerIn: parent; text: "clear all"
-                        font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                    MouseArea { id: clrAllMa; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: { batchModel.clear(); panel.overrideExt = "" } }
-                }
             }
 
             // Override-all row
@@ -496,6 +510,57 @@ Item {
                     model: batchModel
                     spacing: 4
                     clip: true
+
+                    property bool allEnabled: {
+                        if (batchModel.count === 0) return false
+                        for (var i = 0; i < batchModel.count; i++)
+                            if (!batchModel.get(i).enabled) return false
+                        return true
+                    }
+
+                    header: Rectangle {
+                        width: fileListView.width
+                        height: 32
+                        color: "transparent"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10; anchors.rightMargin: 8
+                            spacing: 8
+
+                            // Select-all checkbox — same position as per-row checkbox
+                            Rectangle {
+                                width: 14; height: 14; radius: 3
+                                color: fileListView.allEnabled ? "#50b4ff" : "transparent"
+                                border.color: fileListView.allEnabled ? "#50b4ff" : root.accent
+                                border.width: 1.5
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text {
+                                    anchors.centerIn: parent; text: "\u2713"
+                                    font.pixelSize: 9; font.bold: true; color: "#0e0e0f"
+                                    visible: fileListView.allEnabled
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var next = !fileListView.allEnabled
+                                        for (var i = 0; i < batchModel.count; i++)
+                                            batchModel.setProperty(i, "enabled", next)
+                                    }
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "file"
+                                font.pixelSize: 10; font.family: root.appFont
+                                color: root.textDim; font.bold: true
+                            }
+
+                            // Spacer to align with source badge + arrow + target
+                            Item { width: 1; height: 1 }
+                        }
+                    }
 
                     delegate: Rectangle {
                         id: rowRect
@@ -586,7 +651,7 @@ Item {
                                 color: gearMa.containsMouse ? root.surfaceHi : "transparent"
                                 border.color: {
                                     var item = batchModel.get(index)
-                                    var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovCrf >= 0)
+                                    var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0)
                                     return hasOverride ? root.accent : "transparent"
                                 }
                                 border.width: 1
@@ -594,7 +659,7 @@ Item {
                                 Text { anchors.centerIn: parent; text: "\u2699"
                                     font.pixelSize: 12; color: {
                                         var item = batchModel.get(index)
-                                        var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovCrf >= 0)
+                                        var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0)
                                         return hasOverride ? root.accent : root.textDim
                                     }
                                 }
@@ -607,15 +672,20 @@ Item {
 
                             // Remove button
                             Rectangle {
-                                width: 22; height: 22; radius: 5
+                                width: 28; height: 28; radius: 7
                                 color: rmRowMa.containsMouse ? root.errorClr : "transparent"
                                 Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { anchors.centerIn: parent; text: "x"
-                                    font.pixelSize: 9; color: root.textDim }
+                                Text { anchors.centerIn: parent; text: "\u2715"
+                                    font.pixelSize: 13; color: rmRowMa.containsMouse ? "#0e0e0f" : root.textDim }
                                 MouseArea {
                                     id: rmRowMa; anchors.fill: parent; hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: batchModel.remove(index)
+                                    onClicked: {
+                                        batchModel.remove(index)
+                                        // If override no longer valid for all remaining files, reset it
+                                        if (panel.overrideExt !== "" && panel.unionFormats().indexOf(panel.overrideExt) < 0)
+                                            panel.overrideExt = ""
+                                    }
                                 }
                             }
                         }
@@ -915,6 +985,7 @@ Item {
             id: advPanel
             Layout.fillWidth: true
             targetExt: panel.primaryTargetExt()
+            presentCategories: panel.presentCategories
         }
 
         Item { height: 4 }
@@ -1005,9 +1076,13 @@ Item {
     // -- Per-file settings popup -----------------------------------------------
     Popup {
         id: perFilePopup
-        property int rowIdx: -1
+        property int    rowIdx: -1
+        property string fileCategory: "Unknown"
+        property bool   shouldShowVideoFields: fileCategory === "Video"
+        property bool   shouldShowAudioFields: fileCategory === "Video" || fileCategory === "Audio"
         modal: false
         padding: 14
+        width: 420
 
         background: Rectangle {
             color: root.surfaceHi; radius: 10
@@ -1017,10 +1092,13 @@ Item {
         function openFor(idx, anchor) {
             rowIdx = idx
             var item = batchModel.get(idx)
-            pfNameInput.text        = item.outputName
-            pfVideoInput.text       = item.ovVideoCodec
-            pfAudioInput.text       = item.ovAudioCodec
-            pfCrfInput.text         = item.ovCrf >= 0 ? item.ovCrf.toString() : ""
+            fileCategory = bridge.categoryFor(item.sourceExt)
+            pfNameInput.text              = item.outputName
+            pfVideoInput.setValue(item.ovVideoCodec)
+            pfAudioInput.setValue(item.ovAudioCodec)
+            pfVideoBitrateInput.setValue(item.ovVideoBitrate)
+            pfAudioBitrateInput.setValue(item.ovAudioBitrate)
+            pfCrfInput.setValue(item.ovCrf >= 0 ? item.ovCrf.toString() : "")
             var pos = anchor.mapToItem(panel, 0, anchor.height + 4)
             x = Math.min(Math.max(pos.x, 4), panel.width - implicitWidth - 4)
             y = Math.min(pos.y, panel.height - implicitHeight - 4)
@@ -1029,7 +1107,7 @@ Item {
 
         contentItem: ColumnLayout {
             spacing: 10
-            width: 280
+            width: 392
 
             Text { text: perFilePopup.rowIdx >= 0 && perFilePopup.rowIdx < batchModel.count
                         ? batchModel.get(perFilePopup.rowIdx).filePath.split("/").pop().split("\\").pop()
@@ -1041,52 +1119,63 @@ Item {
                 Text { text: "output name"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
                 Rectangle {
                     Layout.fillWidth: true; height: 28; radius: 6
-                    color: root.surface; border.color: pfNameInput.activeFocus ? root.accent : root.border; border.width: 1
+                    color: root.surface; border.color: pfNameInput.activeFocus ? root.accent : root.border; border.width: 1; clip: true
                     TextInput {
                         id: pfNameInput; anchors.fill: parent; anchors.margins: 6
                         font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
-                        placeholderText: "keep original"
-                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
-                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: "keep original"
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideRight }
                     }
                 }
-                Text { text: "video codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                Rectangle {
-                    Layout.fillWidth: true; height: 28; radius: 6
-                    color: root.surface; border.color: pfVideoInput.activeFocus ? root.accent : root.border; border.width: 1
-                    TextInput {
-                        id: pfVideoInput; anchors.fill: parent; anchors.margins: 6
-                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
-                        placeholderText: "global default"
-                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
-                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
-                    }
+                Text { text: "video codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowVideoFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown {
+                    id: pfVideoInput
+                    visible: perFilePopup.shouldShowVideoFields
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true
+                    hint: "global default"
+                    options: ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","libvpx-vp9","libvpx","prores_ks","mpeg4","copy"]
                 }
-                Text { text: "audio codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                Rectangle {
-                    Layout.fillWidth: true; height: 28; radius: 6
-                    color: root.surface; border.color: pfAudioInput.activeFocus ? root.accent : root.border; border.width: 1
-                    TextInput {
-                        id: pfAudioInput; anchors.fill: parent; anchors.margins: 6
-                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
-                        placeholderText: "global default"
-                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
-                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
-                    }
+                Text { text: "video bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowVideoFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown {
+                    id: pfVideoBitrateInput
+                    visible: perFilePopup.shouldShowVideoFields
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true
+                    hint: "global default"
+                    options: ["500k","1M","2M","4M","6M","8M","15M","30M"]
                 }
-                Text { text: "CRF"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                Rectangle {
-                    width: 70; height: 28; radius: 6
-                    color: root.surface; border.color: pfCrfInput.activeFocus ? root.accent : root.border; border.width: 1
-                    TextInput {
-                        id: pfCrfInput; anchors.fill: parent; anchors.margins: 6
-                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
-                        validator: IntValidator { bottom: 0; top: 63 }
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        placeholderText: "global"
-                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
-                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
-                    }
+                Text { text: "audio codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowAudioFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown {
+                    id: pfAudioInput
+                    visible: perFilePopup.shouldShowAudioFields
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true
+                    hint: "global default"
+                    options: ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
+                }
+                Text { text: "audio bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowAudioFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown {
+                    id: pfAudioBitrateInput
+                    visible: perFilePopup.shouldShowAudioFields
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true
+                    hint: "global default"
+                    options: ["64k","96k","128k","192k","256k","320k"]
+                }
+                Text { text: "CRF"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowVideoFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown {
+                    id: pfCrfInput
+                    visible: perFilePopup.shouldShowVideoFields
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true
+                    hint: "global default"
+                    options: ["18","20","22","23","26","28","30","35"]
                 }
             }
 
@@ -1102,8 +1191,12 @@ Item {
                     MouseArea { id: pfClrMa; anchors.fill: parent; hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            pfNameInput.text = ""; pfVideoInput.text = ""
-                            pfAudioInput.text = ""; pfCrfInput.text = ""
+                            pfNameInput.text = ""
+                            pfVideoInput.setValue("")
+                            pfAudioInput.setValue("")
+                            pfVideoBitrateInput.setValue("")
+                            pfAudioBitrateInput.setValue("")
+                            pfCrfInput.setValue("")
                         }
                     }
                 }
@@ -1120,10 +1213,12 @@ Item {
                         onClicked: {
                             var idx = perFilePopup.rowIdx
                             if (idx < 0 || idx >= batchModel.count) { perFilePopup.close(); return }
-                            batchModel.setProperty(idx, "outputName",   pfNameInput.text)
-                            batchModel.setProperty(idx, "ovVideoCodec", pfVideoInput.text)
-                            batchModel.setProperty(idx, "ovAudioCodec", pfAudioInput.text)
-                            batchModel.setProperty(idx, "ovCrf",        pfCrfInput.text.length > 0 ? parseInt(pfCrfInput.text) : -1)
+                            batchModel.setProperty(idx, "outputName",    pfNameInput.text)
+                            batchModel.setProperty(idx, "ovVideoCodec",  pfVideoInput.value)
+                            batchModel.setProperty(idx, "ovAudioCodec",  pfAudioInput.value)
+                            batchModel.setProperty(idx, "ovVideoBitrate", pfVideoBitrateInput.value)
+                            batchModel.setProperty(idx, "ovAudioBitrate", pfAudioBitrateInput.value)
+                            batchModel.setProperty(idx, "ovCrf",         pfCrfInput.value.length > 0 ? parseInt(pfCrfInput.value) : -1)
                             perFilePopup.close()
                         }
                     }
@@ -1175,8 +1270,7 @@ Item {
                         TextInput {
                             id: arFromInput; anchors.fill: parent; anchors.margins: 6
                             font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
-                            placeholderText: "mp4"
-                            Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                            Text { visible: !parent.text.length; anchors.fill: parent; text: "mp4"
                                 font.pixelSize: 12; font.family: root.appFont; color: root.textDim }
                         }
                     }
@@ -1190,8 +1284,7 @@ Item {
                         TextInput {
                             id: arToInput; anchors.fill: parent; anchors.margins: 6
                             font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
-                            placeholderText: "mp3"
-                            Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                            Text { visible: !parent.text.length; anchors.fill: parent; text: "mp3"
                                 font.pixelSize: 12; font.family: root.appFont; color: root.textDim }
                         }
                     }
