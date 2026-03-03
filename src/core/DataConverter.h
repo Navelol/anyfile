@@ -19,7 +19,7 @@ public:
         if (job.onProgress) job.onProgress(0.1f, "Reading input...");
 
         // Read input file
-        std::ifstream inFile(job.inputPath);
+        std::ifstream inFile(job.inputPath.string());
         if (!inFile.is_open())
             return ConversionResult::err("Could not open input file: " + job.inputPath.string());
 

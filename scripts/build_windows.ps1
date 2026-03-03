@@ -1,6 +1,7 @@
 #Requires -Version 5.1
 param(
     [switch]$Gui,
+    [switch]$NoTests,
     [switch]$Debug,
     [switch]$Release
 )
@@ -12,20 +13,23 @@ $RootDir   = Split-Path -Parent $ScriptDir
 $BuildDir  = Join-Path $RootDir "build\windows"
 
 # ── Parse flags ──────────────────────────────────────────────────────────────
-$BuildGui  = if ($Gui)   { "ON"      } else { "OFF"     }
-$BuildType = if ($Debug) { "Debug"   } else { "Release" }
+$BuildGui   = if ($Gui)     { "ON"    } else { "OFF"     }
+$BuildTests = if ($NoTests) { "OFF"   } else { "ON"      }
+$BuildType  = if ($Debug)   { "Debug" } else { "Release" }
 
 Write-Host ""
 Write-Host "+-- Build Config -------------------------------------------+"
-Write-Host "|  Type : $BuildType"
-Write-Host "|  GUI  : $BuildGui"
+Write-Host "|  Type  : $BuildType"
+Write-Host "|  GUI   : $BuildGui"
+Write-Host "|  Tests : $BuildTests"
 Write-Host "+-----------------------------------------------------------+"
 Write-Host ""
 
 # ── Configure ────────────────────────────────────────────────────────────────
 cmake -S $RootDir -B $BuildDir `
     -DCMAKE_BUILD_TYPE="$BuildType" `
-    -DBUILD_GUI="$BuildGui"
+    -DBUILD_GUI="$BuildGui" `
+    -DBUILD_TESTS="$BuildTests"
 
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

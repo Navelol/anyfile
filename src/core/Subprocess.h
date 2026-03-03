@@ -1,6 +1,6 @@
 #pragma once
 
-// ── Process.h ─────────────────────────────────────────────────────────────────
+// ── Subprocess.h ────────────────────────────────────────────────────────────────
 // Safe, cancellable subprocess execution.
 //
 // Basic (blocking) usage — fire and forget:
@@ -90,7 +90,7 @@ public:
     bool running() const { return !finished(); }
 
     // ── Kill the process ──────────────────────────────────────────────────────
-    // Sends SIGTERM on Linux, TerminateProcess on Windows.
+    // Sends SIGKILL on Linux, TerminateProcess on Windows.
     // Always call wait() after cancel() to reap the process.
     void cancel() {
 #ifdef _WIN32
@@ -98,7 +98,7 @@ public:
             TerminateProcess(m_handle, 1);
 #else
         if (m_pid > 0)
-            kill(m_pid, SIGTERM);
+            kill(m_pid, SIGKILL);
 #endif
     }
 
@@ -128,12 +128,18 @@ public:
 
     // ── Blocking run with cancel-flag polling ─────────────────────────────────
     // Polls every `pollMs` milliseconds. Returns -2 if cancelled.
+    // If the cancel flag is already set before the process starts, the process
+    // is never spawned and -2 is returned immediately (avoids an unnecessary
+    // fork+kill cycle that can generate spurious signals on some platforms).
     static int runCancellable(
         const std::string& executable,
         const std::vector<std::string>& args,
         std::atomic<bool>* cancelFlag,
         int pollMs = 50)
     {
+        // Early-exit: don't spawn a process we'd immediately kill
+        if (cancelFlag && cancelFlag->load()) return -2;
+
         Process p;
         if (!p.start(executable, args)) return -1;
 
@@ -203,7 +209,7 @@ private:
 
         PROCESS_INFORMATION pi = {};
         BOOL ok = CreateProcessA(nullptr, cmdLine.data(),
-            nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
+            nullptr, nullptr, TRUE, CREATE_NEW_PROCESS_GROUP, nullptr, nullptr, &si, &pi);
 
         if (nul != INVALID_HANDLE_VALUE) CloseHandle(nul);
         if (!ok) return false;

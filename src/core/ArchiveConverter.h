@@ -156,9 +156,9 @@ private:
             archive_write_header(a, entry);
 
             // Write file contents
-            std::ifstream f(filePath, std::ios::binary);
+            std::ifstream f(filePath.string(), std::ios::binary);
             std::vector<char> buf(8192);
-            while (f.read(buf.data(), buf.size()) || f.gcount() > 0)
+            while ((f.read(buf.data(), buf.size()), f.gcount() > 0))
                 archive_write_data(a, buf.data(), f.gcount());
 
             archive_entry_free(entry);

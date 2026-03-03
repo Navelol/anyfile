@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Types.h"
-#include "Process.h"
+#include "Subprocess.h"
 #include <archive.h>
 #include <archive_entry.h>
 #include <chrono>
@@ -122,9 +122,9 @@ private:
 
             archive_write_header(a, entry);
 
-            std::ifstream f(filePath, std::ios::binary);
+            std::ifstream f(filePath.string(), std::ios::binary);
             std::vector<char> buf(8192);
-            while (f.read(buf.data(), buf.size()) || f.gcount() > 0)
+            while ((f.read(buf.data(), buf.size()), f.gcount() > 0))
                 archive_write_data(a, buf.data(), (size_t)f.gcount());
 
             archive_entry_free(entry);

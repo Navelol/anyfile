@@ -4,7 +4,6 @@ project(converter VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # for clangd
-set(CMAKE_AUTOMOC ON)
 
 # ── Output directories ────────────────────────────────────────────────────────
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -40,11 +39,17 @@ find_package(LibArchive REQUIRED)
 add_subdirectory(thirdparty/nlohmann-json)
 
 # GUI — optional, requires Qt6
-option(BUILD_GUI "Build the Qt6 GUI frontend" OFF)
+option(BUILD_GUI   "Build the Qt6 GUI frontend"       OFF)
+option(BUILD_TESTS "Build the Catch2 unit test suite" ON)
 
 # ── Subdirectories ────────────────────────────────────────────────────────────
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
+
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 if(BUILD_GUI)
     find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Qml)
@@ -56,6 +61,7 @@ message(STATUS "┌─ Converter Build Config ───────────�
 message(STATUS "│  C++ Standard : ${CMAKE_CXX_STANDARD}")
 message(STATUS "│  Build type   : ${CMAKE_BUILD_TYPE}")
 message(STATUS "│  Build GUI    : ${BUILD_GUI}")
+message(STATUS "│  Build tests  : ${BUILD_TESTS}")
 message(STATUS "│  FFmpeg       : ${AVCODEC_VERSION}")
 message(STATUS "│  Assimp       : ${assimp_VERSION}")
 message(STATUS "│  nlohmann-json: submodule             │")

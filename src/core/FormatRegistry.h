@@ -30,11 +30,17 @@ public:
     // For output paths (file doesn't exist yet): extension only.
     std::optional<Format> detect(const fs::path& path) const {
         if (fs::exists(path)) {
-            // 1. Try magic-number detection
+            // 1. Try libmagic (when available) — most reliable for known MIME types
             auto byMagic = detectByMagic(path);
             if (byMagic) return byMagic;
 
-            // 2. Fall back to extension
+            // 2. Fall back to hand-rolled byte sniffer — catches cases where
+            //    libmagic is installed but returns nullopt (e.g. truncated/minimal
+            //    files, or formats it doesn't recognise well)
+            auto byBytes = detectByBytes(path);
+            if (byBytes) return byBytes;
+
+            // 3. Fall back to extension
         }
         return detectByExtension(path);
     }
@@ -101,7 +107,7 @@ private:
     // ── Hand-rolled byte sniffer (libmagic fallback) ──────────────────────────
     // Covers the formats most likely to be misnamed or extensionless.
     static std::optional<Format> detectByBytes(const fs::path& path) {
-        std::ifstream f(path, std::ios::binary);
+        std::ifstream f(path.string(), std::ios::binary);
         if (!f) return std::nullopt;
 
         unsigned char buf[32] = {};
@@ -126,7 +132,7 @@ private:
             return fmt("rar", Category::Archive, "application/x-rar-compressed");
         // tar: check ustar signature at offset 257
         {
-            std::ifstream tf(path, std::ios::binary);
+            std::ifstream tf(path.string(), std::ios::binary);
             unsigned char tbuf[512] = {};
             tf.read(reinterpret_cast<char*>(tbuf), 512);
             if (tf.gcount() >= 262 &&
