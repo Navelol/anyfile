@@ -396,8 +396,8 @@ public:
             // Merge: global options first, then per-job overrides win
             QVariantMap merged = globalOptions;
             const QStringList overrideKeys {
-                "videoCodec","audioCodec","videoBitrate","audioBitrate",
-                "resolution","framerate","pixelFormat","crf"
+                "videoCodec","audioCodec","videoBitrate","videoMaxRate",
+                "resolution","framerate","pixelFormat","crf","rateMode"
             };
             for (const QString& k : overrideKeys) {
                 if (spec.contains(k) && !spec.value(k).toString().isEmpty())

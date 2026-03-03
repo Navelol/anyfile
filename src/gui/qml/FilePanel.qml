@@ -10,7 +10,7 @@ Item {
 
     // -- Batch model -----------------------------------------------------------
     // Each row: { filePath, enabled, sourceExt, targetExt,
-    //             outputName, ovVideoCodec, ovAudioCodec, ovCrf }
+    //             outputName, ovVideoCodec, ovAudioCodec, ovRateMode, ovVideoBitrate, ovVideoMaxRate, ovAudioBitrate, ovCrf }
     ListModel { id: batchModel }
     property string overrideExt: ""   // if set, all enabled rows use this ext
 
@@ -54,7 +54,8 @@ Item {
         var tgt  = fmts.length > 0 ? fmts[0] : ""
         batchModel.append({ filePath: path, enabled: true, sourceExt: ext, targetExt: tgt,
                             outputName: "", ovVideoCodec: "", ovAudioCodec: "",
-                            ovVideoBitrate: "", ovAudioBitrate: "", ovCrf: -1 })
+                            ovVideoBitrate: "", ovVideoMaxRate: "", ovAudioBitrate: "", ovCrf: -1,
+                            ovRateMode: "crf" })
         // Reset global override if this file can't convert to it
         if (panel.overrideExt !== "" && fmts.indexOf(panel.overrideExt) < 0)
             panel.overrideExt = ""
@@ -97,9 +98,14 @@ Item {
             if (item.outputName !== "")      spec.outputName    = item.outputName
             if (item.ovVideoCodec !== "")    spec.videoCodec    = item.ovVideoCodec
             if (item.ovAudioCodec !== "")    spec.audioCodec    = item.ovAudioCodec
-            if (item.ovVideoBitrate !== "")  spec.videoBitrate  = item.ovVideoBitrate
             if (item.ovAudioBitrate !== "")  spec.audioBitrate  = item.ovAudioBitrate
-            if (item.ovCrf >= 0)             spec.crf           = item.ovCrf
+            if (item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2") {
+                spec.rateMode = item.ovRateMode
+                if (item.ovVideoBitrate !== "") spec.videoBitrate = item.ovVideoBitrate
+                if (item.ovVideoMaxRate !== "") spec.videoMaxRate = item.ovVideoMaxRate
+            } else if (item.ovCrf >= 0) {
+                spec.crf = item.ovCrf
+            }
             specs.push(spec)
         }
         return specs
@@ -796,7 +802,7 @@ Item {
                                 color: gearMa.containsMouse ? root.surfaceHi : "transparent"
                                 border.color: {
                                     var item = batchModel.get(index)
-                                    var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0)
+                                    var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovVideoMaxRate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0 || item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2")
                                     return hasOverride ? root.accent : "transparent"
                                 }
                                 border.width: 1
@@ -804,7 +810,7 @@ Item {
                                 Text { anchors.centerIn: parent; text: "\u2699"
                                     font.pixelSize: 12; color: {
                                         var item = batchModel.get(index)
-                                        var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0)
+                                        var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovVideoMaxRate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0 || item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2")
                                         return hasOverride ? root.accent : root.textDim
                                     }
                                 }
@@ -1153,8 +1159,12 @@ Item {
         id: perFilePopup
         property int    rowIdx: -1
         property string fileCategory: "Unknown"
-        property bool   shouldShowVideoFields: fileCategory === "Video"
-        property bool   shouldShowAudioFields: fileCategory === "Video" || fileCategory === "Audio"
+        property string targetExt: ""
+        property bool   shouldShowVideoFields: ["mp4","mkv","webm","mov","avi","ts","m4v"].indexOf(targetExt) >= 0
+        property bool   shouldShowAudioFields: ["mp4","mkv","webm","mov","avi","ts","m4v","mp3","flac","wav","ogg","opus","aac","m4a"].indexOf(targetExt) >= 0
+        property bool   supportsVBR: targetExt === "mp4" || targetExt === "mkv" || targetExt === "mov" || targetExt === "webm"
+            || targetExt === "avi" || targetExt === "ts" || targetExt === "m4v" || targetExt === ""
+        property string pfRateMode: "crf"
         modal: false
         padding: 14
         width: 420
@@ -1168,10 +1178,13 @@ Item {
             rowIdx = idx
             var item = batchModel.get(idx)
             fileCategory = bridge.categoryFor(item.sourceExt)
+            targetExt    = panel.effectiveTarget(idx)
+            pfRateMode   = item.ovRateMode || "crf"
             pfNameInput.text              = item.outputName
             pfVideoInput.setValue(item.ovVideoCodec)
             pfAudioInput.setValue(item.ovAudioCodec)
             pfVideoBitrateInput.setValue(item.ovVideoBitrate)
+            pfVideoMaxRateInput.setValue(item.ovVideoMaxRate || "")
             pfAudioBitrateInput.setValue(item.ovAudioBitrate)
             pfCrfInput.setValue(item.ovCrf >= 0 ? item.ovCrf.toString() : "")
             var pos = anchor.mapToItem(panel, 0, anchor.height + 4)
@@ -1189,6 +1202,42 @@ Item {
                         : ""
                 font.pixelSize: 11; font.bold: true; font.family: root.appFont
                 color: root.textPrim; elide: Text.ElideMiddle; Layout.fillWidth: true }
+
+            Row {
+                visible: perFilePopup.shouldShowVideoFields && perFilePopup.supportsVBR
+                Layout.preferredHeight: visible ? 32 : 0
+                spacing: 6
+                Repeater {
+                    model: [
+                        { id: "crf",  label: "CRF" },
+                        { id: "vbr1", label: "VBR 1-pass" },
+                        { id: "vbr2", label: "VBR 2-pass" },
+                    ]
+                    Rectangle {
+                        property bool active: perFilePopup.pfRateMode === modelData.id
+                        width: 88; height: 26; radius: 7
+                        color: active ? root.accent : (pfRmMa.containsMouse ? root.surfaceHi : root.surface)
+                        border.color: active ? root.accent : root.border; border.width: active ? 1.5 : 1
+                        Behavior on color { ColorAnimation { duration: 80 } }
+                        Behavior on border.color { ColorAnimation { duration: 80 } }
+                        Text { anchors.centerIn: parent; text: modelData.label
+                            font.pixelSize: 10; font.family: root.appFont; font.bold: active
+                            color: active ? "#0e0e0f" : root.textDim }
+                        MouseArea { id: pfRmMa; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                perFilePopup.pfRateMode = modelData.id
+                                if (modelData.id === "crf") {
+                                    pfVideoBitrateInput.setValue("")
+                                    pfVideoMaxRateInput.setValue("")
+                                } else {
+                                    pfCrfInput.setValue("")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             GridLayout { columns: 2; columnSpacing: 10; rowSpacing: 8
                 Text { text: "output name"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
@@ -1220,15 +1269,25 @@ Item {
                         return ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","h264_videotoolbox","libvpx-vp9","prores_ks","mpeg4","copy"]
                     }
                 }
-                Text { text: "video bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
-                    visible: perFilePopup.shouldShowVideoFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                Text { text: "target bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"; Layout.preferredHeight: visible ? implicitHeight : 0 }
                 FieldDropdown {
                     id: pfVideoBitrateInput
-                    visible: perFilePopup.shouldShowVideoFields
+                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"
                     Layout.preferredHeight: visible ? 28 : 0
                     Layout.fillWidth: true
-                    hint: "global default"
-                    options: ["500k","1M","2M","4M","6M","8M","15M","30M"]
+                    hint: "4M, 8M"
+                    options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"]
+                }
+                Text { text: "max bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown {
+                    id: pfVideoMaxRateInput
+                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true
+                    hint: "leave blank or 2× target"
+                    options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"]
                 }
                 Text { text: "audio codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                     visible: perFilePopup.shouldShowAudioFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
@@ -1262,14 +1321,14 @@ Item {
                     options: ["64k","96k","128k","192k","256k","320k"]
                 }
                 Text { text: "CRF"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
-                    visible: perFilePopup.shouldShowVideoFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode === "crf"; Layout.preferredHeight: visible ? implicitHeight : 0 }
                 FieldDropdown {
                     id: pfCrfInput
-                    visible: perFilePopup.shouldShowVideoFields
+                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode === "crf"
                     Layout.preferredHeight: visible ? 28 : 0
                     Layout.fillWidth: true
                     hint: "global default"
-                    options: ["18","20","22","23","26","28","30","35"]
+                    options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
                 }
             }
 
@@ -1288,7 +1347,9 @@ Item {
                             pfNameInput.text = ""
                             pfVideoInput.setValue("")
                             pfAudioInput.setValue("")
+                            perFilePopup.pfRateMode = "crf"
                             pfVideoBitrateInput.setValue("")
+                            pfVideoMaxRateInput.setValue("")
                             pfAudioBitrateInput.setValue("")
                             pfCrfInput.setValue("")
                         }
@@ -1307,12 +1368,14 @@ Item {
                         onClicked: {
                             var idx = perFilePopup.rowIdx
                             if (idx < 0 || idx >= batchModel.count) { perFilePopup.close(); return }
-                            batchModel.setProperty(idx, "outputName",    pfNameInput.text)
-                            batchModel.setProperty(idx, "ovVideoCodec",  pfVideoInput.value)
-                            batchModel.setProperty(idx, "ovAudioCodec",  pfAudioInput.value)
+                            batchModel.setProperty(idx, "outputName",     pfNameInput.text)
+                            batchModel.setProperty(idx, "ovVideoCodec",   pfVideoInput.value)
+                            batchModel.setProperty(idx, "ovAudioCodec",   pfAudioInput.value)
+                            batchModel.setProperty(idx, "ovRateMode",     perFilePopup.pfRateMode)
                             batchModel.setProperty(idx, "ovVideoBitrate", pfVideoBitrateInput.value)
+                            batchModel.setProperty(idx, "ovVideoMaxRate", pfVideoMaxRateInput.value)
                             batchModel.setProperty(idx, "ovAudioBitrate", pfAudioBitrateInput.value)
-                            batchModel.setProperty(idx, "ovCrf",         pfCrfInput.value.length > 0 ? parseInt(pfCrfInput.value) : -1)
+                            batchModel.setProperty(idx, "ovCrf", perFilePopup.pfRateMode === "crf" && pfCrfInput.value.length > 0 ? parseInt(pfCrfInput.value) : -1)
                             perFilePopup.close()
                         }
                     }
