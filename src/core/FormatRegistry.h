@@ -199,11 +199,10 @@ private:
         if (buf[0]==0x67 && buf[1]==0x6C && buf[2]==0x54 && buf[3]==0x46)
             return fmt("glb", Category::Model3D, "model/gltf-binary");
 
-        // ── Data ──────────────────────────────────────────────────────────────
-        if (buf[0]=='{')
-            return fmt("json", Category::Data, "application/json");
-        if (buf[0]=='<')
-            return fmt("xml",  Category::Data, "application/xml");
+        // NOTE: '{' (JSON) and '<' (XML-like) are intentionally NOT sniffed here.
+        // Too many unrelated formats start with those bytes: FB2, SVG, HTML,
+        // COLLADA, GLTF, etc. all begin with '<'; the byte alone can't distinguish
+        // them, so we let the extension fallback handle all text-based formats.
 
         return std::nullopt;  // inconclusive — caller will try extension
     }

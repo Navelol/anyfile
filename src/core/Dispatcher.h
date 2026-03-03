@@ -10,6 +10,11 @@
 #include "PdfRenderer.h"
 #include <random>
 
+#ifdef __linux__
+#  include <fcntl.h>    // fallocate
+#  include <unistd.h>
+#endif
+
 namespace converter {
 
 class Dispatcher {
@@ -75,24 +80,103 @@ public:
 
 private:
 
+    // ── Space estimation ──────────────────────────────────────────────────────
+    // Returns a conservative upper-bound estimate of output size in bytes.
+    // Archives can expand dramatically on decompression; media and documents
+    // are generally similar in size to their inputs.
+    static uintmax_t estimateOutputBytes(uintmax_t inputBytes, Category inCat, Category outCat) {
+        // Decompressing an archive is the worst case — could be 100x in theory,
+        // but 10x covers virtually all real-world archives without being absurd.
+        if (inCat == Category::Archive || outCat == Category::Archive)
+            return inputBytes * 10;
+
+        // Video/audio re-encoding can produce larger output (e.g. lossy → lossless)
+        if (inCat == Category::Video || outCat == Category::Video ||
+            inCat == Category::Audio || outCat == Category::Audio)
+            return inputBytes * 3;
+
+        // Everything else — documents, images, data, 3D models — stays roughly
+        // similar in size. 2x is a comfortable buffer.
+        return inputBytes * 2;
+    }
+
+    // ── Disk space check ──────────────────────────────────────────────────────
+    // Returns empty string on success, error message if space is insufficient.
+    static std::string checkDiskSpace(const fs::path& outputPath, uintmax_t needed) {
+        // Walk up to the nearest existing directory — output dir may not exist yet
+        fs::path checkDir = outputPath.parent_path();
+        while (!checkDir.empty() && !fs::exists(checkDir))
+            checkDir = checkDir.parent_path();
+        if (checkDir.empty())
+            checkDir = fs::current_path();
+
+        std::error_code ec;
+        auto space = fs::space(checkDir, ec);
+        if (ec)
+            return "";  // Can't determine space — let the conversion attempt proceed
+
+        if (space.available < needed) {
+            // Convert to MB for a human-readable message
+            auto availMB  = space.available / (1024 * 1024);
+            auto neededMB = needed          / (1024 * 1024);
+            return "Not enough disk space: need ~" + std::to_string(neededMB) +
+                   " MB, only " + std::to_string(availMB) + " MB available";
+        }
+        return "";
+    }
+
+    // ── fallocate (Linux only) ────────────────────────────────────────────────
+    // Pre-reserves `size` bytes for the file at `path`.
+    // If the filesystem can't accommodate the reservation, this fails
+    // immediately — before any conversion work has been done.
+    // On Windows this is a no-op; we rely on the fs::space() check alone.
+    static void preallocate(const fs::path& path, uintmax_t size) {
+#ifdef __linux__
+        int fd = open(path.string().c_str(), O_WRONLY | O_CREAT, 0644);
+        if (fd < 0) return;
+        // fallocate returns -1 on failure (e.g. filesystem doesn't support it)
+        // — we silently ignore that and let the conversion proceed normally.
+        fallocate(fd, 0, 0, static_cast<off_t>(size));
+        close(fd);
+#endif
+        // Windows: no-op — fs::space() check is the only guard
+        (void)path; (void)size;
+    }
+
     // ── Atomic write wrapper ──────────────────────────────────────────────────
-    // Converts to a temp file, then renames to final path on success.
-    // Rename is a single OS syscall — readers always see either the old
-    // complete file or the new complete file, never a partial write.
+    // 1. Estimate required space and check availability (cross-platform)
+    // 2. Pre-allocate the temp file (Linux only)
+    // 3. Run the converter into the temp file
+    // 4. On success: rename temp → real output (atomic)
+    // 5. On failure: remove temp, original output is never touched
     static ConversionResult dispatchAtomic(ConversionJob job) {
         fs::path realOutput = job.outputPath;
 
-        // Build a temp path in the same directory so rename() stays on one filesystem
+        // ── Step 1: disk space pre-flight ─────────────────────────────────────
+        uintmax_t inputBytes = fs::file_size(job.inputPath);
+        uintmax_t needed     = estimateOutputBytes(
+            inputBytes,
+            job.inputFormat.category,
+            job.outputFormat.category
+        );
+
+        std::string spaceErr = checkDiskSpace(realOutput, needed);
+        if (!spaceErr.empty())
+            return ConversionResult::err(spaceErr);
+
+        // ── Step 2: create temp path and pre-allocate ─────────────────────────
         fs::path tempOutput = makeTempPath(realOutput);
         job.outputPath = tempOutput;
 
+        preallocate(tempOutput, needed);
+
+        // ── Step 3: run the converter ─────────────────────────────────────────
         ConversionResult result = route(job);
 
         if (result.success) {
             // Some converters change the output extension (e.g. PdfRenderer
             // always writes a .zip of page images regardless of the requested
-            // extension).  Detect this by comparing the extension the converter
-            // reported with the extension of the temp file we gave it.
+            // extension). Detect this by comparing extensions.
             fs::path srcTemp = tempOutput;
             fs::path dstReal = realOutput;
             if (result.outputPath.extension() != tempOutput.extension()) {
@@ -102,6 +186,7 @@ private:
                           (realOutput.stem().string() + newExt.string());
             }
 
+            // ── Step 4: atomic rename ─────────────────────────────────────────
             std::error_code ec;
             fs::rename(srcTemp, dstReal, ec);
             if (ec) {
@@ -113,7 +198,7 @@ private:
             result.outputPath = dstReal;
 
         } else {
-            // Clean up the temp file on failure (best-effort)
+            // ── Step 5: clean up temp on failure ──────────────────────────────
             std::error_code ec;
             fs::remove(tempOutput, ec);
         }
@@ -122,12 +207,10 @@ private:
     }
 
     // Generates e.g. /out/video.mp4  →  /out/.video.tmp_3f9a1b.mp4
-    // The original extension is kept at the END so that external tools (ffmpeg,
-    // ebook-convert, pdftoppm …) can still infer the container/format from the
-    // filename while the write is in progress.
+    // The original extension is kept at the END so that external tools
+    // (ffmpeg, ebook-convert, pdftoppm…) can still infer the format from
+    // the filename while the write is in progress.
     static fs::path makeTempPath(const fs::path& target) {
-        // Random 6-hex-char suffix — avoids collisions when two jobs
-        // target the same output path concurrently
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<uint32_t> dist(0, 0xFFFFFF);
@@ -135,7 +218,6 @@ private:
         char suffix[16];
         std::snprintf(suffix, sizeof(suffix), "%06x", dist(gen));
 
-        // Pattern: .<stem>.tmp_<hex><ext>  e.g. .video.tmp_3f9a1b.mp4
         std::string tempName =
             "." + target.stem().string() + ".tmp_" + suffix + target.extension().string();
 
@@ -147,33 +229,26 @@ private:
         Category inCat  = job.inputFormat.category;
         Category outCat = job.outputFormat.category;
 
-        // ── 3D models ─────────────────────────────────────────────────────────
         if (inCat == Category::Model3D || outCat == Category::Model3D)
             return ModelConverter::convert(job);
 
-        // ── PDF → Image ───────────────────────────────────────────────────────
         if (job.inputFormat.ext == "pdf" && outCat == Category::Image)
             return PdfRenderer::convert(job);
 
-        // ── Media: image, video, audio ────────────────────────────────────────
         if (inCat == Category::Image  || inCat == Category::Video  || inCat == Category::Audio ||
             outCat == Category::Image || outCat == Category::Video || outCat == Category::Audio)
             return MediaConverter::convert(job);
 
-        // ── Cross-category: spreadsheet ↔ data ───────────────────────────────
         if ((inCat == Category::Data && outCat == Category::Document) ||
             (inCat == Category::Document && outCat == Category::Data))
             return DocumentConverter::convert(job);
 
-        // ── Data formats (JSON, XML, YAML, CSV…) ──────────────────────────────
         if (inCat == Category::Data && outCat == Category::Data)
             return DataConverter::convert(job);
 
-        // ── Archives ──────────────────────────────────────────────────────────
         if (inCat == Category::Archive || outCat == Category::Archive)
             return ArchiveConverter::convert(job);
 
-        // ── Documents & Ebooks ────────────────────────────────────────────────
         if (inCat == Category::Document || outCat == Category::Document ||
             inCat == Category::Ebook    || outCat == Category::Ebook)
             return DocumentConverter::convert(job);
