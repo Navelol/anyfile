@@ -581,51 +581,73 @@ Item {
                     color: root.textDim; Layout.alignment: Qt.AlignVCenter
                 }
 
-                ScrollView {
-                    Layout.fillWidth: true; height: 32
-                    ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff; clip: true
-                    Row {
-                        spacing: 5
-                        Rectangle {
-                            width: pfLbl.implicitWidth + 14; height: 26; radius: 7
-                            color: panel.overrideExt === "" ? "#50b4ff" : (pfMa.containsMouse ? root.border : root.surface)
-                            border.color: panel.overrideExt === "" ? "#50b4ff" : root.border; border.width: 1
-                            Behavior on color { ColorAnimation { duration: 80 } }
-                            Text { id: pfLbl; anchors.centerIn: parent; text: "per-file"
-                                font.pixelSize: 10; font.family: root.appFont; font.bold: panel.overrideExt === ""
-                                color: panel.overrideExt === "" ? "#0e0e0f" : root.textDim }
-                            MouseArea { id: pfMa; anchors.fill: parent; hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor; onClicked: panel.overrideExt = "" }
-                        }
-                        Repeater {
-                            model: batchModel.count > 0 ? panel.unionFormats() : []
+                Item {
+                    Layout.fillWidth: true; height: 32; clip: true
+
+                    Flickable {
+                        id: overrideFlick
+                        anchors.fill: parent
+                        contentWidth: overrideRow.implicitWidth
+                        contentHeight: height
+                        flickableDirection: Flickable.HorizontalFlick
+                        clip: true
+                        Row {
+                            id: overrideRow
+                            y: (parent.height - height) / 2; spacing: 5
                             Rectangle {
-                                width: ovLbl.implicitWidth + 14; height: 26; radius: 7
-                                color: panel.overrideExt === modelData ? "#50b4ff" : (ovMa.containsMouse ? root.border : root.surface)
-                                border.color: panel.overrideExt === modelData ? "#50b4ff" : root.border; border.width: 1
+                                width: pfLbl.implicitWidth + 14; height: 26; radius: 7
+                                color: panel.overrideExt === "" ? "#50b4ff" : (pfMa.containsMouse ? root.border : root.surface)
+                                border.color: panel.overrideExt === "" ? "#50b4ff" : root.border; border.width: 1
                                 Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { id: ovLbl; anchors.centerIn: parent; text: "." + modelData
-                                    font.pixelSize: 11; font.family: root.appFont; font.bold: panel.overrideExt === modelData
-                                    color: panel.overrideExt === modelData ? "#0e0e0f" : root.textMid }
-                                MouseArea { id: ovMa; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor; onClicked: panel.overrideExt = modelData }
+                                Text { id: pfLbl; anchors.centerIn: parent; text: "per-file"
+                                    font.pixelSize: 10; font.family: root.appFont; font.bold: panel.overrideExt === ""
+                                    color: panel.overrideExt === "" ? "#0e0e0f" : root.textDim }
+                                MouseArea { id: pfMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor; onClicked: panel.overrideExt = "" }
+                            }
+                            Repeater {
+                                model: batchModel.count > 0 ? panel.unionFormats() : []
+                                Rectangle {
+                                    width: ovLbl.implicitWidth + 14; height: 26; radius: 7
+                                    color: panel.overrideExt === modelData ? "#50b4ff" : (ovMa.containsMouse ? root.border : root.surface)
+                                    border.color: panel.overrideExt === modelData ? "#50b4ff" : root.border; border.width: 1
+                                    Behavior on color { ColorAnimation { duration: 80 } }
+                                    Text { id: ovLbl; anchors.centerIn: parent; text: "." + modelData
+                                        font.pixelSize: 11; font.family: root.appFont; font.bold: panel.overrideExt === modelData
+                                        color: panel.overrideExt === modelData ? "#0e0e0f" : root.textMid }
+                                    MouseArea { id: ovMa; anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor; onClicked: panel.overrideExt = modelData }
+                                }
                             }
                         }
+                    }
+                    AppScrollBar {
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                        height: 4; orientation: Qt.Horizontal; flickable: overrideFlick
                     }
                 }
             }
 
             // File list
-            ScrollView {
+            Item {
                 visible: batchModel.count > 0
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                ScrollBar.vertical.policy: ScrollBar.AsNeeded
                 clip: true
+
+                AppScrollBar {
+                    id: fileListSB
+                    anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+                    width: 4
+                    orientation: Qt.Vertical
+                    flickable: fileListView
+                }
 
                 ListView {
                     id: fileListView
+                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom
+                              right: fileListSB.visible ? fileListSB.left : parent.right
+                              rightMargin: fileListSB.visible ? 4 : 0 }
                     model: batchModel
                     spacing: 4
                     clip: true
@@ -977,38 +999,50 @@ Item {
                     Layout.fillWidth: true; spacing: 8
                     Text { text: "default:"; font.pixelSize: 10; font.bold: true
                         font.family: root.appFont; color: root.textDim }
-                    ScrollView {
-                        Layout.fillWidth: true; height: 32
-                        ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-                        ScrollBar.vertical.policy: ScrollBar.AlwaysOff; clip: true
-                        Row {
-                            spacing: 5
-                            Rectangle {
-                                width: nodefLbl.implicitWidth + 14; height: 26; radius: 7
-                                color: panel.folderDefaultExt === "" ? "#50b4ff" : (nodefMa.containsMouse ? root.border : root.surface)
-                                border.color: panel.folderDefaultExt === "" ? "#50b4ff" : root.border; border.width: 1
-                                Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { id: nodefLbl; anchors.centerIn: parent; text: "skip unmatched"
-                                    font.pixelSize: 10; font.family: root.appFont
-                                    color: panel.folderDefaultExt === "" ? "#0e0e0f" : root.textDim }
-                                MouseArea { id: nodefMa; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor; onClicked: panel.folderDefaultExt = "" }
-                            }
-                            Repeater {
-                                model: panel.folderFormats()
+                    Item {
+                        Layout.fillWidth: true; height: 32; clip: true
+
+                        Flickable {
+                            id: folderDefaultFlick
+                            anchors.fill: parent
+                            contentWidth: folderDefaultRow.implicitWidth
+                            contentHeight: height
+                            flickableDirection: Flickable.HorizontalFlick
+                            clip: true
+                            Row {
+                                id: folderDefaultRow
+                                y: (parent.height - height) / 2; spacing: 5
                                 Rectangle {
-                                    width: defExtLbl.implicitWidth + 14; height: 26; radius: 7
-                                    color: panel.folderDefaultExt === modelData ? "#50b4ff" : (defExtMa.containsMouse ? root.border : root.surface)
-                                    border.color: panel.folderDefaultExt === modelData ? "#50b4ff" : root.border; border.width: 1
+                                    width: nodefLbl.implicitWidth + 14; height: 26; radius: 7
+                                    color: panel.folderDefaultExt === "" ? "#50b4ff" : (nodefMa.containsMouse ? root.border : root.surface)
+                                    border.color: panel.folderDefaultExt === "" ? "#50b4ff" : root.border; border.width: 1
                                     Behavior on color { ColorAnimation { duration: 80 } }
-                                    Text { id: defExtLbl; anchors.centerIn: parent; text: "." + modelData
-                                        font.pixelSize: 11; font.family: root.appFont
-                                        font.bold: panel.folderDefaultExt === modelData
-                                        color: panel.folderDefaultExt === modelData ? "#0e0e0f" : root.textMid }
-                                    MouseArea { id: defExtMa; anchors.fill: parent; hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor; onClicked: panel.folderDefaultExt = modelData }
+                                    Text { id: nodefLbl; anchors.centerIn: parent; text: "skip unmatched"
+                                        font.pixelSize: 10; font.family: root.appFont
+                                        color: panel.folderDefaultExt === "" ? "#0e0e0f" : root.textDim }
+                                    MouseArea { id: nodefMa; anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor; onClicked: panel.folderDefaultExt = "" }
+                                }
+                                Repeater {
+                                    model: panel.folderFormats()
+                                    Rectangle {
+                                        width: defExtLbl.implicitWidth + 14; height: 26; radius: 7
+                                        color: panel.folderDefaultExt === modelData ? "#50b4ff" : (defExtMa.containsMouse ? root.border : root.surface)
+                                        border.color: panel.folderDefaultExt === modelData ? "#50b4ff" : root.border; border.width: 1
+                                        Behavior on color { ColorAnimation { duration: 80 } }
+                                        Text { id: defExtLbl; anchors.centerIn: parent; text: "." + modelData
+                                            font.pixelSize: 11; font.family: root.appFont
+                                            font.bold: panel.folderDefaultExt === modelData
+                                            color: panel.folderDefaultExt === modelData ? "#0e0e0f" : root.textMid }
+                                        MouseArea { id: defExtMa; anchors.fill: parent; hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor; onClicked: panel.folderDefaultExt = modelData }
+                                    }
                                 }
                             }
+                        }
+                        AppScrollBar {
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                            height: 4; orientation: Qt.Horizontal; flickable: folderDefaultFlick
                         }
                     }
                     // "+ rule" button

@@ -223,62 +223,27 @@ Column {
                             GradientStop { position: 1.0; color: root.bg } }
                     }
 
+                    // Wheel-to-scroll
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: function(event) {
+                            var delta = event.angleDelta.x !== 0 ? event.angleDelta.x : event.angleDelta.y
+                            presetTrack.x = Math.max(presetTrack.minX, Math.min(0, presetTrack.x + delta * 0.5))
+                        }
+                    }
+
                     // Capture ID for width reference
                     Item { id: presetClipArea; anchors.fill: parent }
                 }
 
-                // Scrollbar — only shown when content overflows
-                Item {
-                    width: parent.width
-                    height: 4
-                    visible: presetTrack.width > presetClipArea.width + 2
-
-                    // Track
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width; height: 3; radius: 1.5
-                        color: root.border
-                    }
-                    // Thumb — clickable & draggable
-                    Rectangle {
-                        id: sbThumb
-                        anchors.verticalCenter: parent.verticalCenter
-                        height: 3; radius: 1.5
-                        color: sbMa.containsMouse || sbMa.pressed ? root.accent : root.textDim
-                        Behavior on color { ColorAnimation { duration: 80 } }
-
-                        // thumb width proportional to visible / total
-                        width: presetTrack.width > 0
-                            ? Math.max(24, presetClipArea.width * (presetClipArea.width / presetTrack.width))
-                            : 24
-
-                        // thumb x mirrors track scroll position
-                        x: presetTrack.width > presetClipArea.width
-                            ? (-presetTrack.x / (presetTrack.width - presetClipArea.width))
-                              * (presetClipArea.width - width)
-                            : 0
-
-                        MouseArea {
-                            id: sbMa
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.SizeHorCursor
-                            property real _startX: 0
-                            property real _startTrackX: 0
-                            onPressed: function(mouse) {
-                                _startX = mouse.x
-                                _startTrackX = presetTrack.x
-                            }
-                            onPositionChanged: function(mouse) {
-                                if (!pressed) return
-                                var ratio = presetTrack.width > presetClipArea.width
-                                    ? (presetClipArea.width - sbThumb.width) / (presetTrack.width - presetClipArea.width)
-                                    : 1
-                                var delta = (mouse.x - _startX) / ratio
-                                presetTrack.x = Math.max(presetTrack.minX, Math.min(0, _startTrackX - delta))
-                            }
-                        }
-                    }
+                // Scrollbar
+                AppScrollBar {
+                    width: parent.width; height: 4
+                    orientation: Qt.Horizontal
+                    contentSize: presetTrack.width
+                    visibleSize: presetClipArea.width
+                    position: -presetTrack.x
+                    onMoved: function(p) { presetTrack.x = -p }
                 }
             }
 

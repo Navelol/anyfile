@@ -43,6 +43,7 @@ qt_add_qml_module(anyfile_gui
         qml/DropZone.qml
         qml/OutputZone.qml
         qml/AdvancedPanel.qml
+        qml/AppScrollBar.qml
         qml/ResultPanel.qml
         qml/ProgressBar2.qml
         qml/FieldDropdown.qml

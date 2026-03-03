@@ -119,74 +119,71 @@ Rectangle {
         }
 
         // ── Detail view ───────────────────────────────────────────────────────
-        ScrollView {
+        Item {
             visible: panel._sel >= 0
             Layout.fillWidth: true
             implicitHeight: Math.min(detailCol.implicitHeight, 340)
-            ScrollBar.vertical.policy: ScrollBar.AsNeeded
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             clip: true
 
-            Column {
-                id: detailCol
-                width: inner.width - 2
-                spacing: 10
+            Flickable {
+                id: detailFlick
+                anchors.fill: parent
+                contentWidth: width
+                contentHeight: detailCol.implicitHeight
+                flickableDirection: Flickable.VerticalFlick
+                clip: true
 
-                Repeater {
-                    model: panel._sel >= 0 ? panel._groups[panel._sel].exts : []
-                    delegate: RowLayout {
-                        property string srcExt: modelData
-                        width: parent.width
-                        spacing: 8
+                Column {
+                    id: detailCol
+                    width: detailFlick.width - (detailSB.visible ? detailSB.width + 4 : 0)
+                    spacing: 10
 
-                        // Source ext badge
-                        Rectangle {
-                            width: srcLbl.implicitWidth + 16
-                            height: 26
-                            radius: 7
-                            color: root.accent
-                            Text {
-                                id: srcLbl
-                                anchors.centerIn: parent
-                                text: "." + srcExt
-                                font.pixelSize: 11
-                                font.bold: true
-                                font.family: root.appFont
-                                color: "#0e0e0f"
+                    Repeater {
+                        model: panel._sel >= 0 ? panel._groups[panel._sel].exts : []
+                        delegate: RowLayout {
+                            property string srcExt: modelData
+                            width: parent.width
+                            spacing: 8
+
+                            // Source ext badge
+                            Rectangle {
+                                width: srcLbl.implicitWidth + 16; height: 26; radius: 7
+                                color: root.accent
+                                Text {
+                                    id: srcLbl; anchors.centerIn: parent; text: "." + srcExt
+                                    font.pixelSize: 11; font.bold: true; font.family: root.appFont
+                                    color: "#0e0e0f"
+                                }
                             }
-                        }
 
-                        Text { text: "→"; font.pixelSize: 13; color: root.textDim; font.family: root.appFont }
+                            Text { text: "→"; font.pixelSize: 13; color: root.textDim; font.family: root.appFont }
 
-                        // Target chips
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 5
-
-                            Repeater {
-                                model: bridge.formatsFor("file." + srcExt)
-                                delegate: Rectangle {
-                                    width: tgtLbl.implicitWidth + 14
-                                    height: 24
-                                    radius: 7
-                                    color: root.surface
-                                    border.color: root.border
-                                    border.width: 1
-                                    Text {
-                                        id: tgtLbl
-                                        anchors.centerIn: parent
-                                        text: "." + modelData
-                                        font.pixelSize: 10
-                                        font.family: root.appFont
-                                        color: root.textMid
+                            // Target chips
+                            Flow {
+                                Layout.fillWidth: true; spacing: 5
+                                Repeater {
+                                    model: bridge.formatsFor("file." + srcExt)
+                                    delegate: Rectangle {
+                                        width: tgtLbl.implicitWidth + 14; height: 24; radius: 7
+                                        color: root.surface; border.color: root.border; border.width: 1
+                                        Text {
+                                            id: tgtLbl; anchors.centerIn: parent; text: "." + modelData
+                                            font.pixelSize: 10; font.family: root.appFont; color: root.textMid
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                Item { height: 4 }
+                    Item { height: 4 }
+                }
+            }
+
+            AppScrollBar {
+                id: detailSB
+                anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+                width: 4; orientation: Qt.Vertical; flickable: detailFlick
             }
         }
 

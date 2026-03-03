@@ -60,50 +60,49 @@ Rectangle {
             }
 
             // Horizontal scrollable format list
-            ScrollView {
+            Item {
                 anchors.fill: parent
                 visible: zone.enabled && zone.formats.length > 0
-                ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-                ScrollBar.vertical.policy: ScrollBar.AlwaysOff
                 clip: true
 
-                Row {
-                    spacing: 6
-                    Repeater {
-                        model: zone.formats
+                Flickable {
+                    id: zoneFlick
+                    anchors.fill: parent
+                    contentWidth: zoneRow.implicitWidth
+                    contentHeight: height
+                    flickableDirection: Flickable.HorizontalFlick
+                    clip: true
 
-                        Rectangle {
-                            id: chip
-                            width: chipText.implicitWidth + 16
-                            height: 30
-                            radius: 8
-                            color: zone.selectedFormat === modelData
-                                   ? root.accent
-                                   : (chipMa.containsMouse ? root.surfaceHi : root.surface)
-                            border.color: zone.selectedFormat === modelData
-                                          ? root.accent
-                                          : root.border
-                            border.width: 1
-
-                            Text {
-                                id: chipText
-                                anchors.centerIn: parent
-                                text: "." + modelData
-                                font.pixelSize: 12
-                                font.family: root.appFont
-                                font.bold: zone.selectedFormat === modelData
-                                color: zone.selectedFormat === modelData ? "#0e0e0f" : root.textMid
-                            }
-
-                            MouseArea {
-                                id: chipMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: zone.formatSelected(modelData)
+                    Row {
+                        id: zoneRow
+                        y: (parent.height - height) / 2; spacing: 6
+                        Repeater {
+                            model: zone.formats
+                            Rectangle {
+                                id: chip
+                                width: chipText.implicitWidth + 16; height: 30; radius: 8
+                                color: zone.selectedFormat === modelData
+                                       ? root.accent : (chipMa.containsMouse ? root.surfaceHi : root.surface)
+                                border.color: zone.selectedFormat === modelData ? root.accent : root.border
+                                border.width: 1
+                                Text {
+                                    id: chipText; anchors.centerIn: parent; text: "." + modelData
+                                    font.pixelSize: 12; font.family: root.appFont
+                                    font.bold: zone.selectedFormat === modelData
+                                    color: zone.selectedFormat === modelData ? "#0e0e0f" : root.textMid
+                                }
+                                MouseArea {
+                                    id: chipMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: zone.formatSelected(modelData)
+                                }
                             }
                         }
                     }
+                }
+                AppScrollBar {
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                    height: 4; orientation: Qt.Horizontal; flickable: zoneFlick
                 }
             }
         }
