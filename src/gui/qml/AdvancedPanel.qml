@@ -134,7 +134,7 @@ Column {
                 }
 
                 Item {
-                    width: parent.width; height: 72; clip: true
+                    width: parent.width; height: 60; clip: true
 
                     Item {
                         id: presetTrack
@@ -154,7 +154,7 @@ Column {
                                 model: adv.targetExt !== "" ? bridge.codecPresetsFor(adv.targetExt) : []
 
                                 Rectangle {
-                                    width: 140; height: 66; radius: 8; clip: true
+                                    width: 140; height: 56; radius: 8; clip: true
                                     color: cardMa.containsMouse && !dragH.active
                                            ? root.surfaceHi : root.surface
                                     border.width: 1

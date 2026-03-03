@@ -766,7 +766,7 @@ Item {
                             Rectangle {
                                 id: tgtChip
                                 property string eff: panel.overrideExt !== "" ? panel.overrideExt : model.targetExt
-                                width: Math.min(tgtChipLbl.implicitWidth + 14, 90)
+                                width: 60
                                 height: 26; radius: 7
                                 color: eff !== "" ? (tgtChipMa.containsMouse ? "#3fa0e8" : "#50b4ff")
                                                   : (tgtChipMa.containsMouse ? root.border : root.surfaceHi)
