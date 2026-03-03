@@ -1160,7 +1160,7 @@ Item {
         property int    rowIdx: -1
         property string fileCategory: "Unknown"
         property string targetExt: ""
-        property bool   shouldShowVideoFields: ["mp4","mkv","webm","mov","avi","ts","m4v"].indexOf(targetExt) >= 0
+        property bool   shouldShowVideoFields: ["mp4","mkv","webm","mov","avi","ts","m4v","gif"].indexOf(targetExt) >= 0
         property bool   shouldShowAudioFields: ["mp4","mkv","webm","mov","avi","ts","m4v","mp3","flac","wav","ogg","opus","aac","m4a"].indexOf(targetExt) >= 0
         property bool   supportsVBR: targetExt === "mp4" || targetExt === "mkv" || targetExt === "mov" || targetExt === "webm"
             || targetExt === "avi" || targetExt === "ts" || targetExt === "m4v" || targetExt === ""
@@ -1168,6 +1168,15 @@ Item {
         modal: false
         padding: 14
         width: 420
+        height: contentItem.implicitHeight + padding * 2
+        Behavior on height { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+
+        enter: Transition {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 140; easing.type: Easing.OutCubic }
+        }
+        exit: Transition {
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 110; easing.type: Easing.InCubic }
+        }
 
         background: Rectangle {
             color: root.surfaceHi; radius: 10
