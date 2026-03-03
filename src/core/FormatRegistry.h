@@ -208,6 +208,12 @@ private:
         std::string m = mime.substr(0, mime.find(';'));
         while (!m.empty() && m.back() == ' ') m.pop_back();
 
+        // text/plain is too generic — libmagic returns it for any plain-text file
+        // that lacks a specific magic signature (XML without declaration, YAML,
+        // TOML, INI, ENV, etc.).  Treat it as inconclusive so detect() falls
+        // back to the file's extension instead.
+        if (m == "text/plain") return std::nullopt;
+
         auto it = m_mimeMap.find(m);
         if (it != m_mimeMap.end()) return it->second;
         return std::nullopt;

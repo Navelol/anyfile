@@ -3,7 +3,6 @@
 #include "Types.h"
 #include "Process.h"
 #include <chrono>
-#include <sstream>
 
 namespace converter {
 
@@ -14,19 +13,26 @@ public:
 
         if (job.onProgress) job.onProgress(0.1f, "Converting...");
 
-        auto args = buildFFmpegArgs(job);
-        int ret = Process::run("ffmpeg", args);
+        ConversionResult result;
+        const std::string& outExt = job.outputFormat.ext;
 
-        if (ret != 0)
-            return ConversionResult::err("FFmpeg conversion failed");
+        if (outExt == "gif") {
+            result = convertGif(job);
+        } else {
+            auto args = (outExt == "ico") ? buildIcoArgs(job) : buildFFmpegArgs(job);
+            int rc = Process::runCancellable("ffmpeg", args, job.cancelFlag);
+            if (rc == -2) return ConversionResult::cancelled();
+            if (rc != 0)  return ConversionResult::err("FFmpeg conversion failed");
+            result = ConversionResult::ok(job.outputPath);
+        }
+
+        if (!result.success) return result;
 
         if (job.onProgress) job.onProgress(1.0f, "Done");
 
         auto end = std::chrono::steady_clock::now();
-        double secs = std::chrono::duration<double>(end - start).count();
-
-        auto result = ConversionResult::ok(job.outputPath, secs);
-        result.inputBytes = fs::file_size(job.inputPath);
+        result.durationSeconds = std::chrono::duration<double>(end - start).count();
+        result.inputBytes      = fs::file_size(job.inputPath);
         if (fs::exists(job.outputPath))
             result.outputBytes = fs::file_size(job.outputPath);
 
@@ -52,8 +58,6 @@ private:
             return { "libx264", "aac", "yuv420p", 18 };
         if (outExt == "avi")
             return { "mpeg4", "libmp3lame", "yuv420p", -1 };
-        if (outExt == "gif")
-            return { "", "", "", -1 };
         if (outExt == "mp3")  return { "", "libmp3lame", "", -1 };
         if (outExt == "aac")  return { "", "aac",        "", -1 };
         if (outExt == "ogg")  return { "", "libvorbis",  "", -1 };
@@ -64,7 +68,6 @@ private:
         return { "", "", "", -1 };
     }
 
-    // ── ICO ───────────────────────────────────────────────────────────────────
     static std::vector<std::string> buildIcoArgs(const ConversionJob& job) {
         return {
             "-y", "-i", job.inputPath.string(),
@@ -78,9 +81,6 @@ private:
         };
     }
 
-    // ── GIF: two-pass palettegen ───────────────────────────────────────────────
-    // Two-pass GIF can't be a single Process::run call.
-    // We run pass1 and pass2 sequentially.
     static ConversionResult convertGif(const ConversionJob& job) {
         std::string scaleFilter;
         if (job.resolution) {
@@ -90,46 +90,47 @@ private:
                             + ":" + job.resolution->substr(x + 1) + ",";
         }
         std::string fpsFilter;
-        if (job.framerate)
-            fpsFilter = "fps=" + *job.framerate + ",";
-
+        if (job.framerate) fpsFilter = "fps=" + *job.framerate + ",";
         std::string filters = fpsFilter + scaleFilter;
 
         fs::path palette = fs::temp_directory_path() / ("anyfile_palette_" +
             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".png");
 
-        // Pass 1 — generate palette
-        std::vector<std::string> pass1 = {
+        // Pass 1
+        int rc = Process::runCancellable("ffmpeg", {
             "-y", "-i", job.inputPath.string(),
             "-vf", filters + "palettegen",
             palette.string()
-        };
-        if (Process::run("ffmpeg", pass1) != 0) {
+        }, job.cancelFlag);
+
+        if (rc == -2) { fs::remove(palette); return ConversionResult::cancelled(); }
+        if (rc != 0)  { fs::remove(palette); return ConversionResult::err("FFmpeg GIF palette generation failed"); }
+
+        // Check cancel between passes
+        if (job.cancelFlag && job.cancelFlag->load()) {
             fs::remove(palette);
-            return ConversionResult::err("FFmpeg GIF palette generation failed");
+            return ConversionResult::cancelled();
         }
 
-        // Pass 2 — render with palette
-        std::vector<std::string> pass2 = {
+        // Pass 2
+        rc = Process::runCancellable("ffmpeg", {
             "-y",
             "-i", job.inputPath.string(),
             "-i", palette.string(),
             "-lavfi", filters + "paletteuse",
             job.outputPath.string()
-        };
-        int ret = Process::run("ffmpeg", pass2);
+        }, job.cancelFlag);
+
         fs::remove(palette);
 
-        if (ret != 0)
-            return ConversionResult::err("FFmpeg GIF render failed");
+        if (rc == -2) return ConversionResult::cancelled();
+        if (rc != 0)  return ConversionResult::err("FFmpeg GIF render failed");
 
         return ConversionResult::ok(job.outputPath);
     }
 
-    // ── Main args builder ─────────────────────────────────────────────────────
     static std::vector<std::string> buildFFmpegArgs(const ConversionJob& job) {
         const std::string& outExt = job.outputFormat.ext;
-
         Defaults def = defaultsFor(outExt);
 
         auto resolve = [](const std::optional<std::string>& ov,
@@ -148,16 +149,18 @@ private:
         args.push_back(job.inputPath.string());
 
         if (!vcodec.empty()) { args.push_back("-c:v"); args.push_back(vcodec); }
-        if (!vcodec.empty() && (outExt == "mp4" || outExt == "mkv" || outExt == "mov")) {
-            args.push_back("-preset"); args.push_back("slow");
-        }
+        if (!vcodec.empty() && (outExt == "mp4" || outExt == "mkv" || outExt == "mov"))
+            { args.push_back("-preset"); args.push_back("slow"); }
         if (!acodec.empty()) { args.push_back("-c:a"); args.push_back(acodec); }
         if (crf >= 0)        { args.push_back("-crf"); args.push_back(std::to_string(crf)); }
         if (!pix.empty())    { args.push_back("-pix_fmt"); args.push_back(pix); }
 
         if (job.videoBitrate) { args.push_back("-b:v"); args.push_back(*job.videoBitrate); }
+        // Only set audio bitrate when the user explicitly requests one.
+        // Codecs like libvorbis and libopus use VBR quality modes by default
+        // and reject arbitrary CBR bitrates (libopus caps at 256 kbps; libvorbis
+        // doesn't support -b:a at all in the same way as libmp3lame).
         if (job.audioBitrate) { args.push_back("-b:a"); args.push_back(*job.audioBitrate); }
-        else if (!acodec.empty()) { args.push_back("-b:a"); args.push_back("320k"); }
 
         if (job.resolution) {
             auto x = job.resolution->find('x');
@@ -167,48 +170,10 @@ private:
                               + ":" + job.resolution->substr(x + 1));
             }
         }
-
         if (job.framerate) { args.push_back("-r"); args.push_back(*job.framerate); }
 
         args.push_back(job.outputPath.string());
         return args;
-    }
-
-public:
-    // Re-expose convert so GIF can return early with a full ConversionResult
-    static ConversionResult convertDispatch(const ConversionJob& job) {
-        const std::string& outExt = job.outputFormat.ext;
-
-        auto start = std::chrono::steady_clock::now();
-        if (job.onProgress) job.onProgress(0.1f, "Converting...");
-
-        ConversionResult result;
-        if (outExt == "gif") {
-            result = convertGif(job);
-        } else {
-            std::vector<std::string> args;
-            if (outExt == "ico")
-                args = buildIcoArgs(job);
-            else
-                args = buildFFmpegArgs(job);
-
-            int ret = Process::run("ffmpeg", args);
-            result = (ret == 0)
-                ? ConversionResult::ok(job.outputPath)
-                : ConversionResult::err("FFmpeg conversion failed");
-        }
-
-        if (!result.success) return result;
-
-        if (job.onProgress) job.onProgress(1.0f, "Done");
-
-        auto end = std::chrono::steady_clock::now();
-        result.durationSeconds = std::chrono::duration<double>(end - start).count();
-        result.inputBytes      = fs::file_size(job.inputPath);
-        if (fs::exists(job.outputPath))
-            result.outputBytes = fs::file_size(job.outputPath);
-
-        return result;
     }
 };
 

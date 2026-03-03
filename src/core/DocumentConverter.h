@@ -31,8 +31,12 @@ public:
         else
             error = convertDocument(job);
 
-        if (!error.empty())
+        if (!error.empty()) {
+            // Propagate cancellation as a proper cancelled result
+            if (error == "__cancelled__")
+                return ConversionResult::cancelled();
             return ConversionResult::err(error);
+        }
 
         if (job.onProgress) job.onProgress(1.0f, "Done");
 
@@ -61,11 +65,12 @@ private:
     }
 
     static std::string convertEbook(const ConversionJob& job) {
-        int ret = Process::run("ebook-convert", {
+        int rc = Process::runCancellable("ebook-convert", {
             job.inputPath.string(),
             job.outputPath.string()
-        });
-        if (ret != 0) return "Calibre ebook-convert failed";
+        }, job.cancelFlag);
+        if (rc == -2) return "__cancelled__";
+        if (rc != 0)  return "Calibre ebook-convert failed";
         return "";
     }
 
@@ -106,24 +111,19 @@ private:
             return "Unsupported document output format: ." + outExt;
         }
 
-        int ret = Process::run(SOFFICE_BIN, {
+        int rc = Process::runCancellable(SOFFICE_BIN, {
             "--headless",
             "--convert-to", filter,
             "--outdir", tempDir.string(),
             job.inputPath.string()
-        });
+        }, job.cancelFlag);
 
-        if (ret != 0) {
-            fs::remove_all(tempDir);
-            return "LibreOffice conversion failed";
-        }
+        if (rc == -2) { fs::remove_all(tempDir); return "__cancelled__"; }
+        if (rc != 0)  { fs::remove_all(tempDir); return "LibreOffice conversion failed"; }
 
         fs::path libreOutput;
         for (auto& entry : fs::directory_iterator(tempDir)) {
-            if (entry.is_regular_file()) {
-                libreOutput = entry.path();
-                break;
-            }
+            if (entry.is_regular_file()) { libreOutput = entry.path(); break; }
         }
 
         if (libreOutput.empty() || !fs::exists(libreOutput)) {
@@ -143,12 +143,13 @@ private:
         if (pandocOut.empty())
             return "Unsupported pandoc output format: ." + outExt;
 
-        int ret = Process::run("pandoc", {
+        int rc = Process::runCancellable("pandoc", {
             job.inputPath.string(),
             "-o", job.outputPath.string()
-        });
+        }, job.cancelFlag);
 
-        if (ret != 0) return "Pandoc conversion failed";
+        if (rc == -2) return "__cancelled__";
+        if (rc != 0)  return "Pandoc conversion failed";
         return "";
     }
 

@@ -30,17 +30,23 @@ public:
 
         fs::path pagePrefix = tempDir / "page";
 
-        // pdftoppm args — no shell, no injection possible
-        int ret = Process::run("pdftoppm", {
+        int rc = Process::runCancellable("pdftoppm", {
             fmtFlag,
             "-r", "150",
             job.inputPath.string(),
             pagePrefix.string()
-        });
+        }, job.cancelFlag);
 
-        if (ret != 0) {
+        if (rc == -2) { fs::remove_all(tempDir); return ConversionResult::cancelled(); }
+        if (rc != 0)  {
             fs::remove_all(tempDir);
             return ConversionResult::err("pdftoppm failed — is poppler-utils installed?");
+        }
+
+        // Check cancel before the zip step
+        if (job.cancelFlag && job.cancelFlag->load()) {
+            fs::remove_all(tempDir);
+            return ConversionResult::cancelled();
         }
 
         std::vector<fs::path> pages;
@@ -89,13 +95,11 @@ public:
     }
 
 private:
-    // Returns the pdftoppm format flag as a plain string (no leading dash needed
-    // when passing as a discrete arg — pdftoppm accepts -png, -jpeg etc.)
     static std::string ppmFlag(const std::string& ext) {
         if (ext == "png")  return "-png";
         if (ext == "jpg")  return "-jpeg";
         if (ext == "jpeg") return "-jpeg";
-        if (ext == "webp") return "-jpeg";  // pdftoppm doesn't support webp
+        if (ext == "webp") return "-jpeg";
         return "";
     }
 

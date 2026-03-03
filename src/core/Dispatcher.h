@@ -89,20 +89,28 @@ private:
         ConversionResult result = route(job);
 
         if (result.success) {
+            // Some converters change the output extension (e.g. PdfRenderer
+            // always writes a .zip of page images regardless of the requested
+            // extension).  Detect this by comparing the extension the converter
+            // reported with the extension of the temp file we gave it.
+            fs::path srcTemp = tempOutput;
+            fs::path dstReal = realOutput;
+            if (result.outputPath.extension() != tempOutput.extension()) {
+                auto newExt = result.outputPath.extension();
+                srcTemp.replace_extension(newExt);
+                dstReal = realOutput.parent_path() /
+                          (realOutput.stem().string() + newExt.string());
+            }
+
             std::error_code ec;
-            fs::rename(tempOutput, realOutput, ec);
+            fs::rename(srcTemp, dstReal, ec);
             if (ec) {
-                fs::remove(tempOutput, ec);
+                fs::remove(srcTemp, ec);
                 return ConversionResult::err(
                     "Conversion succeeded but failed to finalise output file: " + ec.message()
                 );
             }
-            // Fix up the result to report the real output path
-            result.outputPath = realOutput;
-
-            // PdfRenderer may change the extension to .zip — propagate that
-            if (result.outputPath.extension() != realOutput.extension())
-                result.outputPath = realOutput.parent_path() / result.outputPath.filename();
+            result.outputPath = dstReal;
 
         } else {
             // Clean up the temp file on failure (best-effort)
@@ -113,7 +121,10 @@ private:
         return result;
     }
 
-    // Generates e.g. /out/video.mp4  →  /out/.video.mp4.tmp_3f9a1b
+    // Generates e.g. /out/video.mp4  →  /out/.video.tmp_3f9a1b.mp4
+    // The original extension is kept at the END so that external tools (ffmpeg,
+    // ebook-convert, pdftoppm …) can still infer the container/format from the
+    // filename while the write is in progress.
     static fs::path makeTempPath(const fs::path& target) {
         // Random 6-hex-char suffix — avoids collisions when two jobs
         // target the same output path concurrently
@@ -124,8 +135,9 @@ private:
         char suffix[16];
         std::snprintf(suffix, sizeof(suffix), "%06x", dist(gen));
 
+        // Pattern: .<stem>.tmp_<hex><ext>  e.g. .video.tmp_3f9a1b.mp4
         std::string tempName =
-            "." + target.filename().string() + ".tmp_" + suffix;
+            "." + target.stem().string() + ".tmp_" + suffix + target.extension().string();
 
         return target.parent_path() / tempName;
     }
