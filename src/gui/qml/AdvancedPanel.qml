@@ -112,19 +112,19 @@ Column {
     // ── Collapsible body ──────────────────────────────────────────────────────
     Item {
         width: parent.width
-        height: adv.expanded ? advBody.implicitHeight + 24 : 0
+        height: adv.expanded ? advBody.implicitHeight + 16 : 0
         clip: true
         Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
         Column {
             id: advBody
-            anchors.top: parent.top; anchors.topMargin: 12
+            anchors.top: parent.top; anchors.topMargin: 8
             anchors.left: parent.left; anchors.right: parent.right
-            spacing: 14
+            spacing: 10
 
             // ── Preset cards — drag-scrollable, no scrollbars ─────────────────
             Column {
-                width: parent.width; spacing: 6
+                width: parent.width; spacing: 4
                 visible: presetsRepeater.count > 0
 
                 Text {
@@ -134,7 +134,7 @@ Column {
                 }
 
                 Item {
-                    width: parent.width; height: 88; clip: true
+                    width: parent.width; height: 72; clip: true
 
                     Item {
                         id: presetTrack
@@ -154,7 +154,7 @@ Column {
                                 model: adv.targetExt !== "" ? bridge.codecPresetsFor(adv.targetExt) : []
 
                                 Rectangle {
-                                    width: 154; height: 82; radius: 8; clip: true
+                                    width: 140; height: 66; radius: 8; clip: true
                                     color: cardMa.containsMouse && !dragH.active
                                            ? root.surfaceHi : root.surface
                                     border.width: 1
@@ -230,7 +230,7 @@ Column {
 
             // ── Rate mode selector ────────────────────────────────────────────
             Column {
-                width: parent.width; spacing: 6
+                width: parent.width; spacing: 4
                 visible: adv.showVideoFields && adv.supportsVBR
 
                 Text { text: "RATE CONTROL"
@@ -278,7 +278,7 @@ Column {
             // ── Fields grid ───────────────────────────────────────────────────
             GridLayout {
                 width: parent.width
-                columns: 4; columnSpacing: 12; rowSpacing: 8
+                columns: 4; columnSpacing: 12; rowSpacing: 6
 
                 // Video Codec
                 ColumnLayout { spacing: 4; visible: adv.showVideoFields

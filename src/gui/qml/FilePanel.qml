@@ -349,9 +349,128 @@ Item {
     }
 
     // -- Layout ----------------------------------------------------------------
+
+    // Bottom section: convert button + batch results (always visible)
+    Item {
+        id: bottomSection
+        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+        anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.bottomMargin: 20
+        height: convertRow.height + (batchResultsRect.visible ? batchResultsRect.height + 10 : 0)
+
+        // -- Convert button ----------------------------------------------------
+        Item {
+            id: convertRow
+            width: parent.width
+            anchors.bottom: parent.bottom
+            height: 44
+
+            property bool canConvert: {
+                if (bridge.converting) return false
+                if (panel.mode === 0) return panel.enabledCount() > 0
+                if (panel.folderPath === "" || panel.folderFiles.length === 0) return false
+                // Need at least one file with a resolved target
+                for (var i = 0; i < panel.folderFiles.length; i++) {
+                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") return true
+                }
+                return false
+            }
+
+            property string label: {
+                if (bridge.converting) return "converting..."
+                if (panel.mode === 0) {
+                    var n = panel.enabledCount()
+                    return n > 0 ? ("convert " + n + " file" + (n === 1 ? "" : "s") + " →") : "convert →"
+                }
+                // folder mode: count those with resolved targets
+                var fn = 0
+                for (var i = 0; i < panel.folderFiles.length; i++) {
+                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") fn++
+                }
+                return fn > 0 ? ("convert " + fn + " file" + (fn === 1 ? "" : "s") + " →") : "convert →"
+            }
+
+            Rectangle {
+                id: convertBtn
+                anchors.left: parent.left
+                width: Math.max(cvtLbl.implicitWidth + 32, 160)
+                height: parent.height; radius: 8
+                color: {
+                    if (!parent.canConvert) return root.border
+                    if (cvtMa.containsMouse) return root.accentDim
+                    return root.accent
+                }
+                Behavior on color { ColorAnimation { duration: 100 } }
+                Text {
+                    id: cvtLbl; anchors.centerIn: parent; text: parent.parent.label
+                    font.pixelSize: 13; font.bold: true; font.family: root.appFont
+                    color: parent.parent.canConvert ? "#0e0e0f" : root.textDim
+                }
+                MouseArea {
+                    id: cvtMa; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: parent.parent.canConvert ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: if (parent.parent.canConvert) panel.doConvert()
+                }
+            }
+
+            // Cancel button — only visible while converting
+            Rectangle {
+                anchors.left: convertBtn.right
+                anchors.leftMargin: 8
+                anchors.verticalCenter: convertBtn.verticalCenter
+                visible: bridge.converting
+                width: cancelLbl.implicitWidth + 24
+                height: parent.height; radius: 8
+                color: cancelMa.containsMouse ? "#a03030" : "#3a1a1a"
+                border.color: root.errorClr; border.width: 1
+                Behavior on color { ColorAnimation { duration: 80 } }
+                Text {
+                    id: cancelLbl; anchors.centerIn: parent; text: "✕  cancel"
+                    font.pixelSize: 12; font.bold: true; font.family: root.appFont
+                    color: root.errorClr
+                }
+                MouseArea {
+                    id: cancelMa; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: bridge.cancelConversion()
+                }
+            }
+        }
+
+        // -- Batch results -----------------------------------------------------
+        Rectangle {
+            id: batchResultsRect
+            visible: batchResults.count > 0
+            width: parent.width
+            anchors.bottom: convertRow.top; anchors.bottomMargin: 10
+            height: Math.min(batchList.contentHeight + 16, 180)
+            color: root.surface; radius: 8; border.color: root.border; border.width: 1; clip: true
+
+            ListView {
+                id: batchList
+                anchors.fill: parent; anchors.margins: 8; spacing: 3
+                model: batchResults; clip: true
+                delegate: RowLayout {
+                    width: batchList.width; spacing: 8
+                    Text { text: model.success ? "\u2713" : "\u2717"
+                        font.pixelSize: 11; font.family: root.appFont
+                        color: model.success ? root.success : root.errorClr }
+                    Text { text: model.filename; font.pixelSize: 11; font.family: root.appFont
+                        color: root.textPrim; elide: Text.ElideMiddle; Layout.preferredWidth: 180 }
+                    Text { text: model.success ? ("\u2192 " + model.detail.split("/").pop()) : model.detail
+                        font.pixelSize: 10; font.family: root.appFont
+                        color: model.success ? root.textDim : root.errorClr
+                        elide: Text.ElideLeft; Layout.fillWidth: true }
+                }
+            }
+        }
+    }
+
+    // Top section: tabs, file/folder content, advanced options
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 20
+        anchors.left: parent.left; anchors.right: parent.right
+        anchors.top: parent.top; anchors.bottom: bottomSection.top
+        anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.topMargin: 20
+        anchors.bottomMargin: 10
         spacing: 14
 
         // Mode tabs
@@ -707,6 +826,7 @@ Item {
         ColumnLayout {
             visible: panel.mode === 1
             Layout.fillWidth: true
+            Layout.fillHeight: true
             spacing: 12
 
             Rectangle {
@@ -992,112 +1112,6 @@ Item {
             presentCategories: panel.presentCategories
         }
 
-        Item { height: 4 }
-
-        // -- Convert button ----------------------------------------------------
-        Item {
-            Layout.fillWidth: true
-            height: 44
-
-            property bool canConvert: {
-                if (bridge.converting) return false
-                if (panel.mode === 0) return panel.enabledCount() > 0
-                if (panel.folderPath === "" || panel.folderFiles.length === 0) return false
-                // Need at least one file with a resolved target
-                for (var i = 0; i < panel.folderFiles.length; i++) {
-                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") return true
-                }
-                return false
-            }
-
-            property string label: {
-                if (bridge.converting) return "converting..."
-                if (panel.mode === 0) {
-                    var n = panel.enabledCount()
-                    return n > 0 ? ("convert " + n + " file" + (n === 1 ? "" : "s") + " →") : "convert →"
-                }
-                // folder mode: count those with resolved targets
-                var fn = 0
-                for (var i = 0; i < panel.folderFiles.length; i++) {
-                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") fn++
-                }
-                return fn > 0 ? ("convert " + fn + " file" + (fn === 1 ? "" : "s") + " →") : "convert →"
-            }
-
-            Rectangle {
-                id: convertBtn
-                anchors.left: parent.left
-                width: Math.max(cvtLbl.implicitWidth + 32, 160)
-                height: parent.height; radius: 8
-                color: {
-                    if (!parent.canConvert) return root.border
-                    if (cvtMa.containsMouse) return root.accentDim
-                    return root.accent
-                }
-                Behavior on color { ColorAnimation { duration: 100 } }
-                Text {
-                    id: cvtLbl; anchors.centerIn: parent; text: parent.parent.label
-                    font.pixelSize: 13; font.bold: true; font.family: root.appFont
-                    color: parent.parent.canConvert ? "#0e0e0f" : root.textDim
-                }
-                MouseArea {
-                    id: cvtMa; anchors.fill: parent; hoverEnabled: true
-                    cursorShape: parent.parent.canConvert ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: if (parent.parent.canConvert) panel.doConvert()
-                }
-            }
-
-            // Cancel button — only visible while converting
-            Rectangle {
-                anchors.left: convertBtn.right
-                anchors.leftMargin: 8
-                anchors.verticalCenter: convertBtn.verticalCenter
-                visible: bridge.converting
-                width: cancelLbl.implicitWidth + 24
-                height: parent.height; radius: 8
-                color: cancelMa.containsMouse ? "#a03030" : "#3a1a1a"
-                border.color: root.errorClr; border.width: 1
-                Behavior on color { ColorAnimation { duration: 80 } }
-                Text {
-                    id: cancelLbl; anchors.centerIn: parent; text: "✕  cancel"
-                    font.pixelSize: 12; font.bold: true; font.family: root.appFont
-                    color: root.errorClr
-                }
-                MouseArea {
-                    id: cancelMa; anchors.fill: parent; hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: bridge.cancelConversion()
-                }
-            }
-        }
-
-        // -- Batch results -----------------------------------------------------
-        Rectangle {
-            visible: batchResults.count > 0
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(batchList.contentHeight + 16, 180)
-            color: root.surface; radius: 8; border.color: root.border; border.width: 1; clip: true
-
-            ListView {
-                id: batchList
-                anchors.fill: parent; anchors.margins: 8; spacing: 3
-                model: batchResults; clip: true
-                delegate: RowLayout {
-                    width: batchList.width; spacing: 8
-                    Text { text: model.success ? "\u2713" : "\u2717"
-                        font.pixelSize: 11; font.family: root.appFont
-                        color: model.success ? root.success : root.errorClr }
-                    Text { text: model.filename; font.pixelSize: 11; font.family: root.appFont
-                        color: root.textPrim; elide: Text.ElideMiddle; Layout.preferredWidth: 180 }
-                    Text { text: model.success ? ("\u2192 " + model.detail.split("/").pop()) : model.detail
-                        font.pixelSize: 10; font.family: root.appFont
-                        color: model.success ? root.textDim : root.errorClr
-                        elide: Text.ElideLeft; Layout.fillWidth: true }
-                }
-            }
-        }
-
-        Item { Layout.fillHeight: true }
     }
 
     // -- Per-file settings popup -----------------------------------------------
