@@ -102,6 +102,10 @@ public:
     int     batchTotal()      const { return m_batchTotal; }
     int     batchDone()       const { return m_batchDone; }
 
+    Q_INVOKABLE void cancelConversion() {
+        m_cancelFlag.store(true);
+    }
+
     // ── Convert a single file ─────────────────────────────────────────────────
     Q_INVOKABLE void convertFile(
         const QString& inputPath,
@@ -110,6 +114,7 @@ public:
     {
         if (m_converting) return;
 
+        m_cancelFlag.store(false);
         m_converting = true;
         m_progress   = 0.0f;
         m_progressMessage = "Starting...";
@@ -121,6 +126,7 @@ public:
         job.outputPath = fs::path(outputPath.toStdString());
 
         applyOptions(job, options);
+        job.cancelFlag = &m_cancelFlag;
 
         // Progress callback — must marshal to main thread
         job.onProgress = [this](float p, const std::string& msg) {
@@ -247,64 +253,74 @@ public:
             QString name, desc, videoCodec, audioCodec;
             int     crf;           // -1 = not set
             QString audioBitrate;  // "" = not set
+            QString extraArgs;     // passed as videoCodec suffix hint (unused by engine but shown)
         };
         using PL = QList<Preset>;
 
+        // CRF reference (from ffmpeg.org wiki + slhck.info research):
+        //   H.264:  18 = visually lossless, 23 = default, 28 = smaller
+        //   H.265:  ~4 higher than H.264 equivalent (22 ≈ H.264 18, 28 ≈ H.264 23)
+        //   VP9:    31 = default, 24 = high quality, 33 = smaller (range 0-63)
+        //   AV1:    30 = good balance (range 0-63); always needs cpu-used for speed
         static const QHash<QString, PL> table {
             {"mp4", PL{
-                {"H.264 · Balanced",    "Best compatibility · good quality",            "libx264",     "aac",       18, ""},
-                {"H.264 · Small file",  "Smaller size, slight quality reduction",       "libx264",     "aac",       26, ""},
-                {"H.264 NVENC",         "GPU-accelerated H.264 (NVIDIA)",               "h264_nvenc",  "aac",       -1, ""},
-                {"H.265 / HEVC",        "~40% smaller than H.264, needs modern player", "libx265",     "aac",       20, ""},
-                {"H.265 NVENC",         "GPU-accelerated HEVC (NVIDIA)",                "hevc_nvenc",  "aac",       -1, ""},
-                {"AV1",                 "Best compression, very slow encode",           "libaom-av1",  "libopus",   30, ""},
+                {"H.264 · Balanced",    "CRF 23 · best compatibility · fast encode",    "libx264",    "aac",      23, "192k"},
+                {"H.264 · High Quality","CRF 18 · visually lossless · larger file",     "libx264",    "aac",      18, "192k"},
+                {"H.264 · Small File",  "CRF 28 · ~40% smaller · acceptable quality",  "libx264",    "aac",      28, "128k"},
+                {"H.265 / HEVC",        "CRF 28 ≈ H.264 CRF 23 · ~50% smaller file",  "libx265",    "aac",      28, "192k"},
+                {"H.265 · High Quality","CRF 22 · near-lossless · modern players",     "libx265",    "aac",      22, "192k"},
+                {"H.264 NVENC",         "GPU-accelerated H.264 · NVIDIA only",          "h264_nvenc", "aac",      -1, "192k"},
+                {"H.265 NVENC",         "GPU-accelerated HEVC · NVIDIA only",           "hevc_nvenc", "aac",      -1, "192k"},
             }},
             {"mkv", PL{
-                {"H.264 · Balanced",    "Best compatibility · good quality",            "libx264",     "aac",       18, ""},
-                {"H.264 NVENC",         "GPU-accelerated H.264 (NVIDIA)",               "h264_nvenc",  "aac",       -1, ""},
-                {"H.265 / HEVC",        "~40% smaller than H.264",                      "libx265",     "aac",       20, ""},
-                {"H.265 NVENC",         "GPU-accelerated HEVC (NVIDIA)",                "hevc_nvenc",  "aac",       -1, ""},
-                {"AV1",                 "Best compression, very slow encode",           "libaom-av1",  "libopus",   30, ""},
-                {"VP9 + Opus",          "Open format, good browser support",            "libvpx-vp9",  "libopus",   20, ""},
+                {"H.264 · Balanced",    "CRF 23 · good quality · wide compatibility",  "libx264",     "aac",      23, "192k"},
+                {"H.265 · Balanced",    "CRF 28 · ~50% smaller than H.264",            "libx265",     "aac",      28, "192k"},
+                {"VP9 + Opus",          "CRF 31 · open format · good for archiving",   "libvpx-vp9",  "libopus",  31, ""},
+                {"AV1 · Fast",          "CRF 30 · best compression · slow encode",     "libaom-av1",  "libopus",  30, ""},
+                {"H.264 NVENC",         "GPU-accelerated H.264 · NVIDIA only",         "h264_nvenc",  "aac",      -1, "192k"},
+                {"H.265 NVENC",         "GPU-accelerated HEVC · NVIDIA only",          "hevc_nvenc",  "aac",      -1, "192k"},
             }},
             {"webm", PL{
-                {"VP9 · Quality",       "Best quality, wide browser support",           "libvpx-vp9",  "libopus",   20, ""},
-                {"VP9 · Fast",          "Faster encode, slightly larger file",          "libvpx-vp9",  "libopus",   30, ""},
-                {"VP8 · Compat",        "Older format, maximum compatibility",          "libvpx",      "libvorbis", -1, ""},
-                {"AV1",                 "Best compression, very slow encode",           "libaom-av1",  "libopus",   30, ""},
+                {"VP9 · Balanced",      "CRF 31 · default · good browser support",     "libvpx-vp9",  "libopus",  31, ""},
+                {"VP9 · High Quality",  "CRF 24 · excellent quality · larger file",    "libvpx-vp9",  "libopus",  24, ""},
+                {"VP9 · Small File",    "CRF 40 · smaller file · good for web",        "libvpx-vp9",  "libopus",  40, ""},
+                {"AV1 · Fast",          "CRF 30 · best compression · very slow",       "libaom-av1",  "libopus",  30, ""},
+                {"VP8 · Compat",        "Older format · maximum compatibility",        "libvpx",      "libvorbis",-1, ""},
             }},
             {"mov", PL{
-                {"H.264 · Apple",       "Standard Apple / Final Cut compatible",        "libx264",     "aac",       18, ""},
-                {"ProRes 422",          "Near-lossless, large file, pro editing",       "prores_ks",   "pcm_s16le", -1, ""},
+                {"H.264 · Balanced",    "CRF 23 · Final Cut / QuickTime compatible",   "libx264",     "aac",      23, "192k"},
+                {"H.264 · High Quality","CRF 18 · visually lossless",                  "libx264",     "aac",      18, "192k"},
+                {"ProRes 422",          "Near-lossless · pro editing · large file",    "prores_ks",   "pcm_s16le",-1, ""},
             }},
             {"avi", PL{
-                {"MPEG-4 · Compat",     "Widest AVI compatibility",                     "mpeg4",       "libmp3lame", -1, "192k"},
+                {"MPEG-4 · Compat",     "Widest AVI compatibility · 192k audio",       "mpeg4",       "libmp3lame",-1, "192k"},
             }},
             {"mp3", PL{
-                {"MP3 · 192k",          "Good quality, universal compatibility",        "",            "libmp3lame", -1, "192k"},
-                {"MP3 · 320k",          "High quality, larger file",                    "",            "libmp3lame", -1, "320k"},
-                {"MP3 · 128k",          "Smaller file, adequate quality",               "",            "libmp3lame", -1, "128k"},
+                {"MP3 · 192k",          "Good quality · universal compatibility",       "",            "libmp3lame",-1, "192k"},
+                {"MP3 · 320k",          "High quality · larger file",                  "",            "libmp3lame",-1, "320k"},
+                {"MP3 · 128k",          "Smaller file · adequate for voice/podcasts",  "",            "libmp3lame",-1, "128k"},
             }},
             {"ogg", PL{
-                {"Vorbis · Quality",    "VBR ~192k equivalent",                         "",            "libvorbis",  -1, ""},
+                {"Vorbis · ~192k",      "VBR quality mode · good general purpose",     "",            "libvorbis", -1, ""},
             }},
             {"opus", PL{
-                {"Opus · 128k",         "Excellent quality at low bitrate",             "",            "libopus",    -1, "128k"},
-                {"Opus · 64k",          "Very small file, good for voice/calls",        "",            "libopus",    -1, "64k"},
+                {"Opus · 128k",         "Excellent quality at low bitrate",            "",            "libopus",   -1, "128k"},
+                {"Opus · 64k",          "Very small · good for voice/calls",           "",            "libopus",   -1, "64k"},
+                {"Opus · 192k",         "High quality · music archiving",              "",            "libopus",   -1, "192k"},
             }},
             {"flac", PL{
-                {"FLAC · Lossless",     "Bit-perfect audio, large file",                "",            "flac",       -1, ""},
+                {"FLAC · Lossless",     "Bit-perfect audio · large file",              "",            "flac",      -1, ""},
             }},
             {"wav", PL{
-                {"PCM 16-bit",          "Uncompressed, maximum compatibility",          "",            "pcm_s16le",  -1, ""},
-                {"PCM 24-bit",          "Uncompressed, higher bit depth",               "",            "pcm_s24le",  -1, ""},
+                {"PCM 16-bit",          "Uncompressed · maximum compatibility",        "",            "pcm_s16le", -1, ""},
+                {"PCM 24-bit",          "Uncompressed · higher dynamic range",         "",            "pcm_s24le", -1, ""},
             }},
             {"aac", PL{
-                {"AAC · 192k",          "Good quality, native MP4/MOV support",         "",            "aac",        -1, "192k"},
-                {"AAC · 256k",          "High quality",                                 "",            "aac",        -1, "256k"},
+                {"AAC · 192k",          "Good quality · native MP4/MOV support",       "",            "aac",       -1, "192k"},
+                {"AAC · 256k",          "High quality · larger file",                  "",            "aac",       -1, "256k"},
             }},
             {"gif", PL{
-                {"Standard GIF",        "Palette-optimised · full compatibility",       "",            "",           -1, ""},
+                {"Standard GIF",        "Palette-optimised · full compatibility",      "",            "",          -1, ""},
             }},
         };
 
@@ -336,6 +352,7 @@ public:
     {
         if (m_converting || jobSpecs.isEmpty()) return;
 
+        m_cancelFlag.store(false);
         m_converting  = true;
         m_batchTotal  = jobSpecs.size();
         m_batchDone   = 0;
@@ -383,6 +400,7 @@ public:
             }
             job.force = forceGlobal || spec.value("force", false).toBool();
             applyOptions(job, merged);
+            job.cancelFlag = &m_cancelFlag;
             jobs << std::move(job);
         }
 
@@ -435,12 +453,19 @@ public:
         if (!fs::exists(root) || !fs::is_directory(root)) return result;
 
         auto scan = [&](const fs::path& dir, bool recurse, auto& self) -> void {
-            for (auto& entry : fs::directory_iterator(dir)) {
-                if (entry.is_regular_file()) {
-                    if (reg.detect(entry.path()))
-                        result << QString::fromStdString(entry.path().string());
-                } else if (recurse && entry.is_directory()) {
-                    self(entry.path(), recurse, self);
+            std::error_code ec;
+            fs::directory_iterator it(dir, ec);
+            if (ec) return; // permission denied or inaccessible — skip silently
+            for (auto& entry : it) {
+                try {
+                    if (entry.is_regular_file(ec) && !ec) {
+                        if (reg.detect(entry.path()))
+                            result << QString::fromStdString(entry.path().string());
+                    } else if (recurse && entry.is_directory(ec) && !ec) {
+                        self(entry.path(), recurse, self);
+                    }
+                } catch (...) {
+                    // skip any individual entry that throws (e.g. symlink loops, access errors)
                 }
             }
         };
@@ -476,6 +501,7 @@ public:
     {
         if (m_converting || inputPaths.isEmpty()) return;
 
+        m_cancelFlag.store(false);
         m_converting  = true;
         m_batchTotal  = inputPaths.size();
         m_batchDone   = 0;
@@ -502,6 +528,7 @@ public:
             job.outputPath = outDir / (job.inputPath.stem().string() + "." + tgtExt.toStdString());
             job.force = forceOverwrite;
             applyOptions(job, options);
+            job.cancelFlag = &m_cancelFlag;
             jobs << std::move(job);
         }
 
@@ -566,6 +593,7 @@ private:
     QString m_progressMessage;
     int     m_batchTotal      = 0;
     int     m_batchDone       = 0;
+    std::atomic<bool> m_cancelFlag { false };
 
     void applyOptions(ConversionJob& job, const QVariantMap& opts) {
         auto getStr = [&](const QString& key) -> std::optional<std::string> {

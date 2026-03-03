@@ -209,7 +209,7 @@ private:
 
         PROCESS_INFORMATION pi = {};
         BOOL ok = CreateProcessA(nullptr, cmdLine.data(),
-            nullptr, nullptr, TRUE, CREATE_NEW_PROCESS_GROUP, nullptr, nullptr, &si, &pi);
+            nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
 
         if (nul != INVALID_HANDLE_VALUE) CloseHandle(nul);
         if (!ok) return false;

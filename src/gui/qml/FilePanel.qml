@@ -625,17 +625,21 @@ Item {
                             Rectangle {
                                 id: tgtChip
                                 property string eff: panel.overrideExt !== "" ? panel.overrideExt : model.targetExt
-                                width: tgtChipLbl.implicitWidth + 14; height: 26; radius: 7
+                                width: Math.min(tgtChipLbl.implicitWidth + 14, 90)
+                                height: 26; radius: 7
                                 color: eff !== "" ? (tgtChipMa.containsMouse ? "#3fa0e8" : "#50b4ff")
                                                   : (tgtChipMa.containsMouse ? root.border : root.surfaceHi)
                                 border.color: eff !== "" ? "#50b4ff" : root.border; border.width: 1
                                 opacity: model.enabled ? 1.0 : 0.4
-                                Behavior on color { ColorAnimation { duration: 80 } }
+                                clip: true
                                 Text {
                                     id: tgtChipLbl; anchors.centerIn: parent
+                                    width: parent.width - 8
                                     text: tgtChip.eff !== "" ? ("." + tgtChip.eff) : "pick..."
                                     font.pixelSize: 11; font.family: root.appFont; font.bold: tgtChip.eff !== ""
                                     color: tgtChip.eff !== "" ? "#0e0e0f" : root.textDim
+                                    elide: Text.ElideRight
+                                    horizontalAlignment: Text.AlignHCenter
                                 }
                                 MouseArea {
                                     id: tgtChipMa; anchors.fill: parent; hoverEnabled: true
@@ -706,7 +710,7 @@ Item {
             spacing: 12
 
             Rectangle {
-                Layout.fillWidth: true; height: 90; radius: 8
+                Layout.fillWidth: true; height: 120; radius: 8
                 color: folderZoneMa.containsMouse ? root.surfaceHi : root.surface
                 border.color: panel.folderPath !== "" ? root.accent
                               : (folderZoneMa.containsMouse ? root.textDim : root.border)
@@ -1042,6 +1046,29 @@ Item {
                     onClicked: if (parent.parent.canConvert) panel.doConvert()
                 }
             }
+
+            // Cancel button — only visible while converting
+            Rectangle {
+                anchors.left: convertBtn.right
+                anchors.leftMargin: 8
+                anchors.verticalCenter: convertBtn.verticalCenter
+                visible: bridge.converting
+                width: cancelLbl.implicitWidth + 24
+                height: parent.height; radius: 8
+                color: cancelMa.containsMouse ? "#a03030" : "#3a1a1a"
+                border.color: root.errorClr; border.width: 1
+                Behavior on color { ColorAnimation { duration: 80 } }
+                Text {
+                    id: cancelLbl; anchors.centerIn: parent; text: "✕  cancel"
+                    font.pixelSize: 12; font.bold: true; font.family: root.appFont
+                    color: root.errorClr
+                }
+                MouseArea {
+                    id: cancelMa; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: bridge.cancelConversion()
+                }
+            }
         }
 
         // -- Batch results -----------------------------------------------------
@@ -1135,7 +1162,15 @@ Item {
                     Layout.preferredHeight: visible ? 28 : 0
                     Layout.fillWidth: true
                     hint: "global default"
-                    options: ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","libvpx-vp9","libvpx","prores_ks","mpeg4","copy"]
+                    options: {
+                        var tgt = perFilePopup.rowIdx >= 0 && perFilePopup.rowIdx < batchModel.count
+                                  ? panel.effectiveTarget(perFilePopup.rowIdx) : ""
+                        if (tgt === "webm") return ["libvpx-vp9","libvpx","libaom-av1"]
+                        if (tgt === "mov")  return ["libx264","libx265","prores_ks","h264_videotoolbox","copy"]
+                        if (tgt === "avi")  return ["mpeg4","libx264","libxvid","copy"]
+                        if (tgt === "mkv")  return ["libx264","libx265","libvpx-vp9","libaom-av1","h264_nvenc","hevc_nvenc","copy"]
+                        return ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","h264_videotoolbox","libvpx-vp9","prores_ks","mpeg4","copy"]
+                    }
                 }
                 Text { text: "video bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                     visible: perFilePopup.shouldShowVideoFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
@@ -1155,7 +1190,18 @@ Item {
                     Layout.preferredHeight: visible ? 28 : 0
                     Layout.fillWidth: true
                     hint: "global default"
-                    options: ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
+                    options: {
+                        var tgt = perFilePopup.rowIdx >= 0 && perFilePopup.rowIdx < batchModel.count
+                                  ? panel.effectiveTarget(perFilePopup.rowIdx) : ""
+                        if (tgt === "webm" || tgt === "opus") return ["libopus","libvorbis"]
+                        if (tgt === "ogg")  return ["libvorbis","libopus"]
+                        if (tgt === "mp3")  return ["libmp3lame"]
+                        if (tgt === "flac") return ["flac"]
+                        if (tgt === "wav")  return ["pcm_s16le","pcm_s24le","pcm_f32le"]
+                        if (tgt === "aac" || tgt === "m4a") return ["aac","libfdk_aac"]
+                        if (tgt === "mov")  return ["aac","pcm_s16le","copy"]
+                        return ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
+                    }
                 }
                 Text { text: "audio bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                     visible: perFilePopup.shouldShowAudioFields; Layout.preferredHeight: visible ? implicitHeight : 0 }

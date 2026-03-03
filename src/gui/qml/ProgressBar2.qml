@@ -8,6 +8,32 @@ Item {
     property real   value:   0.0
     property string message: ""
 
+    // Fake progress: smoothly animate toward 0.9 while converting,
+    // then the real value=1.0 from the bridge snaps it to 100%.
+    property real displayValue: 0.0
+
+    // When real value jumps to 1.0 (done), honour it immediately.
+    // Otherwise, let the fake timer drive displayValue forward.
+    onValueChanged: {
+        if (value >= 1.0) {
+            displayValue = 1.0
+        } else if (value > displayValue) {
+            displayValue = value
+        }
+    }
+
+    Timer {
+        id: fakeTimer
+        interval: 400
+        repeat: true
+        running: bridge.converting && bar.displayValue < 0.9
+        onTriggered: {
+            // Slow logarithmic crawl — moves fast early, slows near 0.9
+            var remaining = 0.9 - bar.displayValue
+            bar.displayValue += remaining * 0.07
+        }
+    }
+
     Rectangle {
         anchors.top: parent.top
         width: parent.width
@@ -24,19 +50,19 @@ Item {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: parent.width * bar.value
+            width: parent.width * bar.displayValue
             color: Qt.rgba(0.91, 1, 0.35, 0.12)  // accent glow
-            Behavior on width { NumberAnimation { duration: 150 } }
+            Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
         }
 
         // Accent line at fill edge
         Rectangle {
-            x: parent.width * bar.value - 1
+            x: parent.width * bar.displayValue - 1
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             width: 2
             color: root.accent
-            Behavior on x { NumberAnimation { duration: 150 } }
+            Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
         }
 
         Row {
@@ -46,7 +72,7 @@ Item {
             spacing: 12
 
             Text {
-                text: Math.round(bar.value * 100) + "%"
+                text: Math.round(bar.displayValue * 100) + "%"
                 font.pixelSize: 11
                 font.bold: true
                 font.family: root.appFont

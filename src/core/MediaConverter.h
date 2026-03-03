@@ -49,13 +49,13 @@ private:
 
     static Defaults defaultsFor(const std::string& outExt) {
         if (outExt == "mp4" || outExt == "m4v")
-            return { "libx264", "aac", "yuv420p", 18 };
+            return { "libx264", "aac", "yuv420p", 23 };
         if (outExt == "mkv")
-            return { "libx264", "aac", "yuv420p", 18 };
+            return { "libx264", "aac", "yuv420p", 23 };
         if (outExt == "webm")
-            return { "libvpx-vp9", "libopus", "yuv420p", 20 };
+            return { "libvpx-vp9", "libopus", "yuv420p", 31 };
         if (outExt == "mov")
-            return { "libx264", "aac", "yuv420p", 18 };
+            return { "libx264", "aac", "yuv420p", 23 };
         if (outExt == "avi")
             return { "mpeg4", "libmp3lame", "yuv420p", -1 };
         if (outExt == "mp3")  return { "", "libmp3lame", "", -1 };
@@ -151,6 +151,13 @@ private:
         if (!vcodec.empty()) { args.push_back("-c:v"); args.push_back(vcodec); }
         if (!vcodec.empty() && (outExt == "mp4" || outExt == "mkv" || outExt == "mov"))
             { args.push_back("-preset"); args.push_back("slow"); }
+
+        // AV1 via libaom defaults to cpu-used 1 which is glacially slow.
+        // cpu-used 6 is the sweet spot: ~99% of max quality at a fraction of the time.
+        if (vcodec == "libaom-av1") {
+            args.push_back("-cpu-used"); args.push_back("6");
+            args.push_back("-row-mt");   args.push_back("1");
+        }
         if (!acodec.empty()) { args.push_back("-c:a"); args.push_back(acodec); }
         if (crf >= 0)        { args.push_back("-crf"); args.push_back(std::to_string(crf)); }
         if (!pix.empty())    { args.push_back("-pix_fmt"); args.push_back(pix); }

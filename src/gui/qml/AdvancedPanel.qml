@@ -37,6 +37,27 @@ Column {
         return true
     }
 
+    // Dynamic codec lists that update when targetExt changes
+    property var videoCodecOptions: {
+        var ext = adv.targetExt
+        if (ext === "webm") return ["libvpx-vp9","libvpx","libaom-av1"]
+        if (ext === "mov")  return ["libx264","libx265","prores_ks","h264_videotoolbox","copy"]
+        if (ext === "avi")  return ["mpeg4","libx264","libxvid","copy"]
+        if (ext === "mkv")  return ["libx264","libx265","libvpx-vp9","libaom-av1","h264_nvenc","hevc_nvenc","copy"]
+        return ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","h264_videotoolbox","copy"]
+    }
+    property var audioCodecOptions: {
+        var ext = adv.targetExt
+        if (ext === "webm" || ext === "opus") return ["libopus","libvorbis"]
+        if (ext === "ogg")  return ["libvorbis","libopus"]
+        if (ext === "mp3")  return ["libmp3lame"]
+        if (ext === "flac") return ["flac"]
+        if (ext === "wav")  return ["pcm_s16le","pcm_s24le","pcm_f32le"]
+        if (ext === "aac" || ext === "m4a") return ["aac","libfdk_aac"]
+        if (ext === "mov")  return ["aac","pcm_s16le","copy"]
+        return ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
+    }
+
     // Apply a preset object (from bridge.codecPresetsFor) to all fields
     function applyPreset(p) {
         videoCodec   = p.videoCodec   || ""
@@ -104,12 +125,12 @@ Column {
                 }
 
                 ScrollView {
-                    width: parent.width; height: presetFlow.implicitHeight + 4
+                    width: parent.width; height: 90
                     ScrollBar.horizontal.policy: ScrollBar.AsNeeded
                     ScrollBar.vertical.policy: ScrollBar.AlwaysOff; clip: true
 
-                    Flow {
-                        id: presetFlow; spacing: 6; width: parent.width
+                    Row {
+                        id: presetFlow; spacing: 6; height: 90
 
                         Repeater {
                             id: presetsRepeater
@@ -117,7 +138,7 @@ Column {
 
                             Rectangle {
                                 width: 160
-                                height: pCol.implicitHeight + 14
+                                height: 80
                                 radius: 8
                                 clip: true
                                 color: pMa.containsMouse ? root.surfaceHi : root.surface
@@ -174,7 +195,7 @@ Column {
                     }
                     FieldDropdown {
                         id: vcInput; hint: "libx264, hevc_nvenc"
-                        options: ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","h264_videotoolbox","libvpx-vp9","libvpx","prores_ks","mpeg4","copy"]
+                        options: adv.videoCodecOptions
                         onValueChanged: adv.videoCodec = value
                     }
                 }
@@ -189,7 +210,7 @@ Column {
                     }
                     FieldDropdown {
                         id: acInput; hint: "aac, libopus"
-                        options: ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
+                        options: adv.audioCodecOptions
                         onValueChanged: adv.audioCodec = value
                     }
                 }
