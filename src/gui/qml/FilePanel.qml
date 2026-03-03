@@ -9,17 +9,21 @@ Item {
     property int mode: 0
 
     // -- Batch model -----------------------------------------------------------
-    // Each row: { filePath, enabled, sourceExt, targetExt }
+    // Each row: { filePath, enabled, sourceExt, targetExt,
+    //             outputName, ovVideoCodec, ovAudioCodec, ovCrf }
     ListModel { id: batchModel }
-    property string overrideExt: ""   // if set, all enabled rows use this
+    property string overrideExt: ""   // if set, all enabled rows use this ext
 
     // -- Folder mode state -----------------------------------------------------
     property string folderPath:    ""
     property var    folderFiles:   []
-    property string folderOutExt:  ""
     property string folderOutDir:  ""
     property bool   folderSameDir: true
     property bool   folderRecurse: true
+
+    // Folder format rules: [{fromExt, toExt}] + a default catch-all
+    ListModel { id: formatRulesModel }
+    property string folderDefaultExt: ""
 
     // -- Results model (shared batch + folder) ---------------------------------
     ListModel { id: batchResults }
@@ -40,7 +44,8 @@ Item {
             if (batchModel.get(i).filePath === path) return
         var fmts = bridge.formatsFor(path)
         var tgt  = fmts.length > 0 ? fmts[0] : ""
-        batchModel.append({ filePath: path, enabled: true, sourceExt: ext, targetExt: tgt })
+        batchModel.append({ filePath: path, enabled: true, sourceExt: ext, targetExt: tgt,
+                            outputName: "", ovVideoCodec: "", ovAudioCodec: "", ovCrf: -1 })
     }
 
     function effectiveTarget(index) {
@@ -66,6 +71,71 @@ Item {
             exts.push(tgt)
         }
         return { paths: paths, exts: exts }
+    }
+
+    // Build detailed job specs for convertBatchDetailed
+    function buildFilesJobSpecs() {
+        var specs = []
+        for (var i = 0; i < batchModel.count; i++) {
+            var item = batchModel.get(i)
+            if (!item.enabled) continue
+            var tgt = effectiveTarget(i)
+            if (tgt === "") continue
+            var spec = { path: item.filePath, ext: tgt }
+            if (item.outputName !== "")    spec.outputName  = item.outputName
+            if (item.ovVideoCodec !== "")  spec.videoCodec  = item.ovVideoCodec
+            if (item.ovAudioCodec !== "")  spec.audioCodec  = item.ovAudioCodec
+            if (item.ovCrf >= 0)           spec.crf         = item.ovCrf
+            specs.push(spec)
+        }
+        return specs
+    }
+
+    // Resolve target ext for a folder file using rules then default
+    function resolveTargetForFolder(filePath) {
+        var src = bridge.detectFormat(filePath)
+        for (var i = 0; i < formatRulesModel.count; i++) {
+            if (formatRulesModel.get(i).fromExt === src)
+                return formatRulesModel.get(i).toExt
+        }
+        return panel.folderDefaultExt
+    }
+
+    // Build folder job specs (each file gets a resolved target)
+    function buildFolderJobSpecs() {
+        var specs = []
+        for (var i = 0; i < folderFiles.length; i++) {
+            var tgt = resolveTargetForFolder(folderFiles[i])
+            if (tgt === "") continue
+            specs.push({ path: folderFiles[i], ext: tgt })
+        }
+        return specs
+    }
+
+    // Unique source extensions present in the folder
+    function sourcesInFolder() {
+        var seen = {}, result = []
+        for (var i = 0; i < folderFiles.length; i++) {
+            var ext = bridge.detectFormat(folderFiles[i])
+            if (ext !== "" && !seen[ext]) { seen[ext] = true; result.push(ext) }
+        }
+        return result.sort()
+    }
+
+    // Primary target ext (first non-empty target in files, or folder resolved)
+    function primaryTargetExt() {
+        if (mode === 0) {
+            for (var i = 0; i < batchModel.count; i++) {
+                var t = effectiveTarget(i)
+                if (t !== "") return t
+            }
+        } else {
+            for (var j = 0; j < folderFiles.length; j++) {
+                var t2 = resolveTargetForFolder(folderFiles[j])
+                if (t2 !== "") return t2
+            }
+        }
+        return ""
     }
 
     function unionFormats() {
@@ -103,36 +173,37 @@ Item {
 
     function doConvert() {
         if (bridge.converting) return
+        var opts = buildOptions()
         if (mode === 0) {
-            var bt = buildInputsAndTargets()
-            if (bt.paths.length === 0) return
+            var specs = buildFilesJobSpecs()
+            if (specs.length === 0) return
             if (!advPanel.forceOverwrite) {
-                var collisions = bridge.wouldOverwrite(bt.paths, bt.exts, "")
+                // build paths/exts for collision check
+                var ps = [], xs = []
+                for (var k = 0; k < specs.length; k++) { ps.push(specs[k].path); xs.push(specs[k].ext) }
+                var collisions = bridge.wouldOverwrite(ps, xs, "")
                 if (collisions.length > 0) {
-                    overwriteDialog.setup(collisions, bt.paths, bt.exts, "")
-                    overwriteDialog.open()
-                    return
+                    overwriteDialog.setup(collisions, specs, "", opts)
+                    overwriteDialog.open(); return
                 }
             }
             batchResults.clear()
-            bridge.convertBatch(bt.paths, bt.exts, "", buildOptions())
+            bridge.convertBatchDetailed(specs, "", opts)
         } else {
-            if (!folderPath || !folderOutExt || folderFiles.length === 0) return
-            var fPaths = [], fExts = []
-            for (var i = 0; i < folderFiles.length; i++) {
-                fPaths.push(folderFiles[i]); fExts.push(folderOutExt)
-            }
+            var fSpecs = buildFolderJobSpecs()
+            if (fSpecs.length === 0) return
             var outDir = folderSameDir ? "" : folderOutDir
             if (!advPanel.forceOverwrite) {
-                var fc = bridge.wouldOverwrite(fPaths, fExts, outDir)
+                var fps = [], fxs = []
+                for (var m = 0; m < fSpecs.length; m++) { fps.push(fSpecs[m].path); fxs.push(fSpecs[m].ext) }
+                var fc = bridge.wouldOverwrite(fps, fxs, outDir)
                 if (fc.length > 0) {
-                    overwriteDialog.setup(fc, fPaths, fExts, outDir)
-                    overwriteDialog.open()
-                    return
+                    overwriteDialog.setup(fc, fSpecs, outDir, opts)
+                    overwriteDialog.open(); return
                 }
             }
             batchResults.clear()
-            bridge.convertBatch(fPaths, fExts, outDir, buildOptions())
+            bridge.convertBatchDetailed(fSpecs, outDir, opts)
         }
     }
 
@@ -143,12 +214,12 @@ Item {
         anchors.centerIn: Overlay.overlay
 
         property var    _collisions: []
-        property var    _paths:      []
-        property var    _exts:       []
+        property var    _specs:      []
         property string _outDir:     ""
+        property var    _opts:       {}
 
-        function setup(col, paths, exts, outDir) {
-            _collisions = col; _paths = paths; _exts = exts; _outDir = outDir
+        function setup(col, specs, outDir, opts) {
+            _collisions = col; _specs = specs; _outDir = outDir; _opts = opts
         }
 
         background: Rectangle {
@@ -208,10 +279,10 @@ Item {
                         onClicked: {
                             overwriteDialog.close()
                             batchResults.clear()
-                            var opts = panel.buildOptions()
+                            var opts = Object.assign({}, overwriteDialog._opts)
                             opts["force"] = true
-                            bridge.convertBatch(overwriteDialog._paths, overwriteDialog._exts,
-                                                overwriteDialog._outDir, opts)
+                            bridge.convertBatchDetailed(overwriteDialog._specs,
+                                                        overwriteDialog._outDir, opts)
                         }
                     }
                 }
@@ -229,9 +300,10 @@ Item {
     function openFolderPicker() {
         var dir = bridge.pickFolder("Select folder to convert")
         if (dir === "") return
-        panel.folderPath   = dir
-        panel.folderFiles  = bridge.scanFolder(dir, panel.folderRecurse)
-        panel.folderOutExt = ""
+        panel.folderPath        = dir
+        panel.folderFiles       = bridge.scanFolder(dir, panel.folderRecurse)
+        panel.folderDefaultExt  = ""
+        formatRulesModel.clear()
     }
 
     function openOutDirPicker() {
@@ -508,6 +580,31 @@ Item {
                                 }
                             }
 
+                            // Gear (per-file settings)
+                            Rectangle {
+                                width: 22; height: 22; radius: 5
+                                color: gearMa.containsMouse ? root.surfaceHi : "transparent"
+                                border.color: {
+                                    var item = batchModel.get(index)
+                                    var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovCrf >= 0)
+                                    return hasOverride ? root.accent : "transparent"
+                                }
+                                border.width: 1
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text { anchors.centerIn: parent; text: "\u2699"
+                                    font.pixelSize: 12; color: {
+                                        var item = batchModel.get(index)
+                                        var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovCrf >= 0)
+                                        return hasOverride ? root.accent : root.textDim
+                                    }
+                                }
+                                MouseArea {
+                                    id: gearMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: perFilePopup.openFor(index, rowRect)
+                                }
+                            }
+
                             // Remove button
                             Rectangle {
                                 width: 22; height: 22; radius: 5
@@ -552,9 +649,10 @@ Item {
                     onDropped: function(drop) {
                         if (drop.urls.length > 0) {
                             var p = bridge.urlToPath(drop.urls[0].toString())
-                            panel.folderPath   = p
-                            panel.folderFiles  = bridge.scanFolder(p, panel.folderRecurse)
-                            panel.folderOutExt = ""
+                            panel.folderPath       = p
+                            panel.folderFiles      = bridge.scanFolder(p, panel.folderRecurse)
+                            panel.folderDefaultExt = ""
+                            formatRulesModel.clear()
                         }
                     }
                 }
@@ -592,9 +690,10 @@ Item {
                         color: panel.folderRecurse ? "#0e0e0f" : root.textMid }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            panel.folderRecurse = !panel.folderRecurse
-                            panel.folderFiles   = bridge.scanFolder(panel.folderPath, panel.folderRecurse)
-                            panel.folderOutExt  = ""
+                            panel.folderRecurse    = !panel.folderRecurse
+                            panel.folderFiles      = bridge.scanFolder(panel.folderPath, panel.folderRecurse)
+                            panel.folderDefaultExt = ""
+                            formatRulesModel.clear()
                         }
                     }
                 }
@@ -609,33 +708,163 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
-            RowLayout {
+            // -- Format rules editor (when folder has files) ---------------------
+            ColumnLayout {
                 visible: panel.folderPath !== "" && panel.folderFiles.length > 0
-                Layout.fillWidth: true; spacing: 12
+                Layout.fillWidth: true; spacing: 6
 
-                Text { text: "convert to"; font.pixelSize: 10; font.bold: true
-                    font.family: root.appFont; color: root.textDim; Layout.alignment: Qt.AlignVCenter }
+                // Section header
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    Text { text: "conversion rules"; font.pixelSize: 10; font.bold: true
+                        font.family: root.appFont; color: root.textDim }
+                    Item { Layout.fillWidth: true }
+                    // Source ext quick-add chips
+                    Repeater {
+                        model: panel.folderFiles.length > 0 ? panel.sourcesInFolder() : []
+                        Rectangle {
+                            property bool hasRule: {
+                                for (var i = 0; i < formatRulesModel.count; i++)
+                                    if (formatRulesModel.get(i).fromExt === modelData) return true
+                                return false
+                            }
+                            width: srcChipLbl.implicitWidth + 14; height: 22; radius: 5
+                            color: hasRule ? root.surfaceHi : (srcChipMa.containsMouse ? root.border : root.surface)
+                            border.color: hasRule ? root.accent : root.border; border.width: 1
+                            opacity: hasRule ? 0.5 : 1.0
+                            Text { id: srcChipLbl; anchors.centerIn: parent; text: "." + modelData
+                                font.pixelSize: 9; font.family: root.appFont; color: root.textMid }
+                            ToolTip.visible: srcChipMa.containsMouse; ToolTip.delay: 400
+                            ToolTip.text: hasRule ? "rule exists for ." + modelData : "add rule for ." + modelData
+                            MouseArea {
+                                id: srcChipMa; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (!parent.hasRule)
+                                        addRulePopup.openFor(modelData, parent)
+                                }
+                            }
+                        }
+                    }
+                }
 
-                ScrollView {
-                    Layout.fillWidth: true; height: 36
-                    ScrollBar.horizontal.policy: ScrollBar.AsNeeded
-                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff; clip: true
-                    Row {
-                        spacing: 5
-                        Repeater {
-                            model: panel.folderFormats()
+                // Existing rules list
+                Column {
+                    Layout.fillWidth: true; spacing: 4
+                    Repeater {
+                        model: formatRulesModel
+                        RowLayout {
+                            width: parent.width; spacing: 8
+                            Text { text: "." + model.fromExt + "  \u2192"
+                                font.pixelSize: 11; font.family: root.appFont; color: root.textMid }
                             Rectangle {
-                                width: ffTxt.implicitWidth + 14; height: 28; radius: 7
-                                color: panel.folderOutExt === modelData ? "#50b4ff"
-                                       : (ffMa.containsMouse ? root.border : root.surface)
-                                border.color: panel.folderOutExt === modelData ? "#50b4ff" : root.border; border.width: 1
+                                width: ruleTgtLbl.implicitWidth + 14; height: 24; radius: 5
+                                color: root.surfaceHi; border.color: root.accent; border.width: 1
+                                Text { id: ruleTgtLbl; anchors.centerIn: parent; text: "." + model.toExt
+                                    font.pixelSize: 11; font.family: root.appFont; color: root.accent }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Rectangle {
+                                width: 20; height: 20; radius: 4
+                                color: rmRuleMa.containsMouse ? root.errorClr : "transparent"
                                 Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { id: ffTxt; anchors.centerIn: parent; text: "." + modelData
-                                    font.pixelSize: 11; font.family: root.appFont
-                                    font.bold: panel.folderOutExt === modelData
-                                    color: panel.folderOutExt === modelData ? "#0e0e0f" : root.textMid }
-                                MouseArea { id: ffMa; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor; onClicked: panel.folderOutExt = modelData }
+                                Text { anchors.centerIn: parent; text: "x"; font.pixelSize: 9
+                                    color: root.textDim }
+                                MouseArea { id: rmRuleMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: formatRulesModel.remove(index) }
+                            }
+                        }
+                    }
+                }
+
+                // Default (catch-all) row
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    Text { text: "default:"; font.pixelSize: 10; font.bold: true
+                        font.family: root.appFont; color: root.textDim }
+                    ScrollView {
+                        Layout.fillWidth: true; height: 32
+                        ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                        ScrollBar.vertical.policy: ScrollBar.AlwaysOff; clip: true
+                        Row {
+                            spacing: 5
+                            Rectangle {
+                                width: nodefLbl.implicitWidth + 14; height: 26; radius: 7
+                                color: panel.folderDefaultExt === "" ? "#50b4ff" : (nodefMa.containsMouse ? root.border : root.surface)
+                                border.color: panel.folderDefaultExt === "" ? "#50b4ff" : root.border; border.width: 1
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text { id: nodefLbl; anchors.centerIn: parent; text: "skip unmatched"
+                                    font.pixelSize: 10; font.family: root.appFont
+                                    color: panel.folderDefaultExt === "" ? "#0e0e0f" : root.textDim }
+                                MouseArea { id: nodefMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor; onClicked: panel.folderDefaultExt = "" }
+                            }
+                            Repeater {
+                                model: panel.folderFormats()
+                                Rectangle {
+                                    width: defExtLbl.implicitWidth + 14; height: 26; radius: 7
+                                    color: panel.folderDefaultExt === modelData ? "#50b4ff" : (defExtMa.containsMouse ? root.border : root.surface)
+                                    border.color: panel.folderDefaultExt === modelData ? "#50b4ff" : root.border; border.width: 1
+                                    Behavior on color { ColorAnimation { duration: 80 } }
+                                    Text { id: defExtLbl; anchors.centerIn: parent; text: "." + modelData
+                                        font.pixelSize: 11; font.family: root.appFont
+                                        font.bold: panel.folderDefaultExt === modelData
+                                        color: panel.folderDefaultExt === modelData ? "#0e0e0f" : root.textMid }
+                                    MouseArea { id: defExtMa; anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor; onClicked: panel.folderDefaultExt = modelData }
+                                }
+                            }
+                        }
+                    }
+                    // "+ rule" button
+                    Rectangle {
+                        width: addRuleLbl.implicitWidth + 16; height: 28; radius: 7
+                        color: addRuleMa.containsMouse ? root.accentDim : root.accent
+                        Behavior on color { ColorAnimation { duration: 80 } }
+                        Text { id: addRuleLbl; anchors.centerIn: parent; text: "+ rule"
+                            font.pixelSize: 10; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
+                        MouseArea { id: addRuleMa; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: addRulePopup.openFor("", null) }
+                    }
+                }
+
+                // Folder files preview list (first 8 + count)
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: Math.min(folderPreviewList.contentHeight + 12, 160) + 12
+                    color: root.surface; radius: 8; border.color: root.border; border.width: 1; clip: true
+                    visible: panel.folderFiles.length > 0
+
+                    ListView {
+                        id: folderPreviewList
+                        anchors.fill: parent; anchors.margins: 6
+                        model: Math.min(panel.folderFiles.length, 12)
+                        spacing: 3; clip: true
+
+                        delegate: RowLayout {
+                            width: folderPreviewList.width; spacing: 8
+                            property string fp:  panel.folderFiles[index] || ""
+                            property string tgt: fp !== "" ? panel.resolveTargetForFolder(fp) : ""
+                            Text {
+                                Layout.fillWidth: true
+                                text: fp.split("/").pop().split("\\").pop()
+                                font.pixelSize: 11; font.family: root.appFont
+                                color: tgt !== "" ? root.textPrim : root.textDim; elide: Text.ElideMiddle
+                            }
+                            Text { text: tgt !== "" ? ("\u2192 ." + tgt) : "(skip)"
+                                font.pixelSize: 10; font.family: root.appFont
+                                color: tgt !== "" ? root.accent : root.textDim }
+                        }
+
+                        footer: Item {
+                            visible: panel.folderFiles.length > 12
+                            height: visible ? 22 : 0
+                            Text {
+                                anchors.centerIn: parent
+                                text: "…and " + (panel.folderFiles.length - 12) + " more"
+                                font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                             }
                         }
                     }
@@ -685,6 +914,7 @@ Item {
         AdvancedPanel {
             id: advPanel
             Layout.fillWidth: true
+            targetExt: panel.primaryTargetExt()
         }
 
         Item { height: 4 }
@@ -697,7 +927,12 @@ Item {
             property bool canConvert: {
                 if (bridge.converting) return false
                 if (panel.mode === 0) return panel.enabledCount() > 0
-                return panel.folderPath !== "" && panel.folderOutExt !== "" && panel.folderFiles.length > 0
+                if (panel.folderPath === "" || panel.folderFiles.length === 0) return false
+                // Need at least one file with a resolved target
+                for (var i = 0; i < panel.folderFiles.length; i++) {
+                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") return true
+                }
+                return false
             }
 
             property string label: {
@@ -706,7 +941,11 @@ Item {
                     var n = panel.enabledCount()
                     return n > 0 ? ("convert " + n + " file" + (n === 1 ? "" : "s") + " →") : "convert →"
                 }
-                var fn = panel.folderFiles.length
+                // folder mode: count those with resolved targets
+                var fn = 0
+                for (var i = 0; i < panel.folderFiles.length; i++) {
+                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") fn++
+                }
                 return fn > 0 ? ("convert " + fn + " file" + (fn === 1 ? "" : "s") + " →") : "convert →"
             }
 
@@ -763,7 +1002,241 @@ Item {
         Item { Layout.fillHeight: true }
     }
 
-    // -- Per-row format picker popup -------------------------------------------
+    // -- Per-file settings popup -----------------------------------------------
+    Popup {
+        id: perFilePopup
+        property int rowIdx: -1
+        modal: false
+        padding: 14
+
+        background: Rectangle {
+            color: root.surfaceHi; radius: 10
+            border.color: root.accent; border.width: 1
+        }
+
+        function openFor(idx, anchor) {
+            rowIdx = idx
+            var item = batchModel.get(idx)
+            pfNameInput.text        = item.outputName
+            pfVideoInput.text       = item.ovVideoCodec
+            pfAudioInput.text       = item.ovAudioCodec
+            pfCrfInput.text         = item.ovCrf >= 0 ? item.ovCrf.toString() : ""
+            var pos = anchor.mapToItem(panel, 0, anchor.height + 4)
+            x = Math.min(Math.max(pos.x, 4), panel.width - implicitWidth - 4)
+            y = Math.min(pos.y, panel.height - implicitHeight - 4)
+            open()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+            width: 280
+
+            Text { text: perFilePopup.rowIdx >= 0 && perFilePopup.rowIdx < batchModel.count
+                        ? batchModel.get(perFilePopup.rowIdx).filePath.split("/").pop().split("\\").pop()
+                        : ""
+                font.pixelSize: 11; font.bold: true; font.family: root.appFont
+                color: root.textPrim; elide: Text.ElideMiddle; Layout.fillWidth: true }
+
+            GridLayout { columns: 2; columnSpacing: 10; rowSpacing: 8
+                Text { text: "output name"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                Rectangle {
+                    Layout.fillWidth: true; height: 28; radius: 6
+                    color: root.surface; border.color: pfNameInput.activeFocus ? root.accent : root.border; border.width: 1
+                    TextInput {
+                        id: pfNameInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        placeholderText: "keep original"
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
+                    }
+                }
+                Text { text: "video codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                Rectangle {
+                    Layout.fillWidth: true; height: 28; radius: 6
+                    color: root.surface; border.color: pfVideoInput.activeFocus ? root.accent : root.border; border.width: 1
+                    TextInput {
+                        id: pfVideoInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        placeholderText: "global default"
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
+                    }
+                }
+                Text { text: "audio codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                Rectangle {
+                    Layout.fillWidth: true; height: 28; radius: 6
+                    color: root.surface; border.color: pfAudioInput.activeFocus ? root.accent : root.border; border.width: 1
+                    TextInput {
+                        id: pfAudioInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        placeholderText: "global default"
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
+                    }
+                }
+                Text { text: "CRF"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                Rectangle {
+                    width: 70; height: 28; radius: 6
+                    color: root.surface; border.color: pfCrfInput.activeFocus ? root.accent : root.border; border.width: 1
+                    TextInput {
+                        id: pfCrfInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        validator: IntValidator { bottom: 0; top: 63 }
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        placeholderText: "global"
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                // Clear overrides button
+                Rectangle {
+                    width: pfClrLbl.implicitWidth + 16; height: 30; radius: 7
+                    color: pfClrMa.containsMouse ? root.surfaceHi : root.surface
+                    border.color: root.border; border.width: 1
+                    Text { id: pfClrLbl; anchors.centerIn: parent; text: "clear"
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
+                    MouseArea { id: pfClrMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            pfNameInput.text = ""; pfVideoInput.text = ""
+                            pfAudioInput.text = ""; pfCrfInput.text = ""
+                        }
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                    width: pfApplyLbl.implicitWidth + 20; height: 30; radius: 7
+                    color: pfApplyMa.containsMouse ? root.accentDim : root.accent
+                    Behavior on color { ColorAnimation { duration: 80 } }
+                    Text { id: pfApplyLbl; anchors.centerIn: parent; text: "apply"
+                        font.pixelSize: 11; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
+                    MouseArea {
+                        id: pfApplyMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            var idx = perFilePopup.rowIdx
+                            if (idx < 0 || idx >= batchModel.count) { perFilePopup.close(); return }
+                            batchModel.setProperty(idx, "outputName",   pfNameInput.text)
+                            batchModel.setProperty(idx, "ovVideoCodec", pfVideoInput.text)
+                            batchModel.setProperty(idx, "ovAudioCodec", pfAudioInput.text)
+                            batchModel.setProperty(idx, "ovCrf",        pfCrfInput.text.length > 0 ? parseInt(pfCrfInput.text) : -1)
+                            perFilePopup.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -- Add-rule popup --------------------------------------------------------
+    Popup {
+        id: addRulePopup
+        property string fromExt: ""
+        modal: true
+        padding: 14
+
+        background: Rectangle {
+            color: root.surfaceHi; radius: 10
+            border.color: root.border; border.width: 1
+        }
+
+        function openFor(srcExt, anchor) {
+            fromExt = srcExt
+            arFromInput.text = srcExt
+            arToInput.text   = ""
+            if (anchor) {
+                var pos = anchor.mapToItem(panel, 0, anchor.height + 4)
+                x = Math.min(pos.x, panel.width - implicitWidth - 4)
+                y = Math.min(pos.y, panel.height - implicitHeight - 4)
+            } else {
+                x = panel.width  / 2 - implicitWidth  / 2
+                y = panel.height / 2 - implicitHeight / 2
+            }
+            open()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            width: 240
+
+            Text { text: "add format rule"; font.pixelSize: 12; font.bold: true
+                font.family: root.appFont; color: root.textPrim }
+
+            RowLayout { spacing: 8
+                ColumnLayout { spacing: 4
+                    Text { text: "from ext"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                    Rectangle {
+                        width: 90; height: 30; radius: 6
+                        color: root.surface; border.color: arFromInput.activeFocus ? root.accent : root.border; border.width: 1
+                        TextInput {
+                            id: arFromInput; anchors.fill: parent; anchors.margins: 6
+                            font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
+                            placeholderText: "mp4"
+                            Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                                font.pixelSize: 12; font.family: root.appFont; color: root.textDim }
+                        }
+                    }
+                }
+                Text { text: "\u2192"; font.pixelSize: 18; color: root.textDim; Layout.alignment: Qt.AlignVCenter | Qt.AlignBottom; bottomPadding: 4 }
+                ColumnLayout { spacing: 4
+                    Text { text: "to ext"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                    Rectangle {
+                        width: 90; height: 30; radius: 6
+                        color: root.surface; border.color: arToInput.activeFocus ? root.accent : root.border; border.width: 1
+                        TextInput {
+                            id: arToInput; anchors.fill: parent; anchors.margins: 6
+                            font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
+                            placeholderText: "mp3"
+                            Text { visible: !parent.text.length; anchors.fill: parent; text: parent.placeholderText
+                                font.pixelSize: 12; font.family: root.appFont; color: root.textDim }
+                        }
+                    }
+                }
+            }
+
+            RowLayout { spacing: 8
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                    width: arCnlLbl.implicitWidth + 16; height: 30; radius: 7
+                    color: arCnlMa.containsMouse ? root.surfaceHi : root.surface
+                    border.color: root.border; border.width: 1
+                    Text { id: arCnlLbl; anchors.centerIn: parent; text: "cancel"
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textDim }
+                    MouseArea { id: arCnlMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor; onClicked: addRulePopup.close() }
+                }
+                Rectangle {
+                    width: arAddLbl.implicitWidth + 20; height: 30; radius: 7
+                    color: (arFromInput.text.trim() !== "" && arToInput.text.trim() !== "")
+                           ? (arAddMa.containsMouse ? root.accentDim : root.accent)
+                           : root.border
+                    Behavior on color { ColorAnimation { duration: 80 } }
+                    Text { id: arAddLbl; anchors.centerIn: parent; text: "add rule"
+                        font.pixelSize: 11; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
+                    MouseArea {
+                        id: arAddMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: arFromInput.text.trim() !== "" && arToInput.text.trim() !== ""
+                                     ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: {
+                            var from = arFromInput.text.trim().replace(/^\./, "")
+                            var to   = arToInput.text.trim().replace(/^\./, "")
+                            if (from === "" || to === "") return
+                            // Remove any existing rule for this from ext
+                            for (var i = formatRulesModel.count - 1; i >= 0; i--)
+                                if (formatRulesModel.get(i).fromExt === from) formatRulesModel.remove(i)
+                            formatRulesModel.append({ fromExt: from, toExt: to })
+                            addRulePopup.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Popup {
         id: fmtPopup
         property int rowIndex: -1
