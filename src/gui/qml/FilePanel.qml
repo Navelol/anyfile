@@ -10,7 +10,8 @@ Item {
 
     // -- Batch model -----------------------------------------------------------
     // Each row: { filePath, enabled, sourceExt, targetExt,
-    //             outputName, ovVideoCodec, ovAudioCodec, ovRateMode, ovVideoBitrate, ovVideoMaxRate, ovAudioBitrate, ovCrf }
+    //             outputName, ovVideoCodec, ovAudioCodec, ovRateMode, ovVideoBitrate, ovVideoMaxRate, ovAudioBitrate, ovCrf,
+    //             ovResolution, ovFramerate }
     ListModel { id: batchModel }
     property string overrideExt: ""   // if set, all enabled rows use this ext
 
@@ -55,7 +56,7 @@ Item {
         batchModel.append({ filePath: path, enabled: true, sourceExt: ext, targetExt: tgt,
                             outputName: "", ovVideoCodec: "", ovAudioCodec: "",
                             ovVideoBitrate: "", ovVideoMaxRate: "", ovAudioBitrate: "", ovCrf: -1,
-                            ovRateMode: "crf" })
+                            ovRateMode: "crf", ovResolution: "", ovFramerate: "" })
         // Reset global override if this file can't convert to it
         if (panel.overrideExt !== "" && fmts.indexOf(panel.overrideExt) < 0)
             panel.overrideExt = ""
@@ -96,6 +97,8 @@ Item {
             if (tgt === "") continue
             var spec = { path: item.filePath, ext: tgt }
             if (item.outputName !== "")      spec.outputName    = item.outputName
+            if (item.ovResolution !== "")    spec.resolution    = item.ovResolution
+            if (item.ovFramerate !== "")     spec.framerate     = item.ovFramerate
             if (item.ovVideoCodec !== "")    spec.videoCodec    = item.ovVideoCodec
             if (item.ovAudioCodec !== "")    spec.audioCodec    = item.ovAudioCodec
             if (item.ovAudioBitrate !== "")  spec.audioBitrate  = item.ovAudioBitrate
@@ -1160,8 +1163,9 @@ Item {
         property int    rowIdx: -1
         property string fileCategory: "Unknown"
         property string targetExt: ""
-        property bool   shouldShowVideoFields: ["mp4","mkv","webm","mov","avi","ts","m4v","gif"].indexOf(targetExt) >= 0
+        property bool   shouldShowVideoFields: ["mp4","mkv","webm","mov","avi","ts","m4v"].indexOf(targetExt) >= 0
         property bool   shouldShowAudioFields: ["mp4","mkv","webm","mov","avi","ts","m4v","mp3","flac","wav","ogg","opus","aac","m4a"].indexOf(targetExt) >= 0
+        property bool   shouldShowGifFields: targetExt === "gif"
         property bool   supportsVBR: targetExt === "mp4" || targetExt === "mkv" || targetExt === "mov" || targetExt === "webm"
             || targetExt === "avi" || targetExt === "ts" || targetExt === "m4v" || targetExt === ""
         property string pfRateMode: "crf"
@@ -1196,6 +1200,8 @@ Item {
             pfVideoMaxRateInput.setValue(item.ovVideoMaxRate || "")
             pfAudioBitrateInput.setValue(item.ovAudioBitrate)
             pfCrfInput.setValue(item.ovCrf >= 0 ? item.ovCrf.toString() : "")
+            pfResolutionInput.text = item.ovResolution || ""
+            pfFramerateInput.text = item.ovFramerate || ""
             var pos = anchor.mapToItem(panel, 0, anchor.height + 4)
             x = Math.min(Math.max(pos.x, 4), panel.width - implicitWidth - 4)
             y = Math.min(pos.y, panel.height - implicitHeight - 4)
@@ -1339,6 +1345,34 @@ Item {
                     hint: "global default"
                     options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
                 }
+                Text { text: "resolution"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowGifFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                Rectangle {
+                    visible: perFilePopup.shouldShowGifFields
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true; height: 28; radius: 6
+                    color: root.surface; border.color: pfResolutionInput.activeFocus ? root.accent : root.border; border.width: 1; clip: true
+                    TextInput {
+                        id: pfResolutionInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: "keep source"
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideRight }
+                    }
+                }
+                Text { text: "framerate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: perFilePopup.shouldShowGifFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                Rectangle {
+                    visible: perFilePopup.shouldShowGifFields
+                    Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true; height: 28; radius: 6
+                    color: root.surface; border.color: pfFramerateInput.activeFocus ? root.accent : root.border; border.width: 1; clip: true
+                    TextInput {
+                        id: pfFramerateInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: "keep source"
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideRight }
+                    }
+                }
             }
 
             RowLayout {
@@ -1361,6 +1395,8 @@ Item {
                             pfVideoMaxRateInput.setValue("")
                             pfAudioBitrateInput.setValue("")
                             pfCrfInput.setValue("")
+                            pfResolutionInput.text = ""
+                            pfFramerateInput.text = ""
                         }
                     }
                 }
@@ -1385,6 +1421,8 @@ Item {
                             batchModel.setProperty(idx, "ovVideoMaxRate", pfVideoMaxRateInput.value)
                             batchModel.setProperty(idx, "ovAudioBitrate", pfAudioBitrateInput.value)
                             batchModel.setProperty(idx, "ovCrf", perFilePopup.pfRateMode === "crf" && pfCrfInput.value.length > 0 ? parseInt(pfCrfInput.value) : -1)
+                            batchModel.setProperty(idx, "ovResolution",   pfResolutionInput.text)
+                            batchModel.setProperty(idx, "ovFramerate",    pfFramerateInput.text)
                             perFilePopup.close()
                         }
                     }
