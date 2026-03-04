@@ -12,6 +12,8 @@ Item {
         fillMode: Image.PreserveAspectFit
         smooth: true
         antialiasing: true
+        sourceSize.width: parent.width * 2
+        sourceSize.height: parent.height * 2
         visible: false
     }
 

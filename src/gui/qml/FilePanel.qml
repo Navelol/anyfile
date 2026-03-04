@@ -641,7 +641,7 @@ Item {
                     TintedIcon {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 64; height: 64
-                        source: "qrc:/icons/file.png"
+                        source: "qrc:/icons/file.svg"
                         color: root.textDim
                     }
                     Text {
@@ -1020,14 +1020,14 @@ Item {
 
                         TintedIcon {
                             anchors.fill: parent
-                            source: "qrc:/icons/folder.png"
+                            source: "qrc:/icons/folder.svg"
                             color: root.accent
                             opacity: panel.folderPath !== "" ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: 200 } }
                         }
                         TintedIcon {
                             anchors.fill: parent
-                            source: "qrc:/icons/folder.png"
+                            source: "qrc:/icons/folder.svg"
                             color: root.textDim
                             opacity: panel.folderPath !== "" ? 0 : 1
                             Behavior on opacity { NumberAnimation { duration: 200 } }

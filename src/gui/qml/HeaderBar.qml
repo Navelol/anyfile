@@ -47,7 +47,8 @@ Item {
         Image {
             source: "qrc:/icons/horizontal.svg"
             Layout.preferredHeight: 26
-            Layout.preferredWidth: implicitWidth * (26 / implicitHeight)
+            Layout.preferredWidth: 26 * (1690.34 / 417.66)
+            sourceSize.height: 52
             fillMode: Image.PreserveAspectFit
             smooth: true
             antialiasing: true
@@ -83,7 +84,7 @@ Item {
             Behavior on color { ColorAnimation { duration: 100 } }
             TintedIcon {
                 anchors.centerIn: parent; width: 12; height: 12
-                source: "qrc:/icons/minimize.png"
+                source: "qrc:/icons/minimize.svg"
                 color: root.textDim
             }
             MouseArea { id: minMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.showMinimized() }
@@ -97,7 +98,7 @@ Item {
             Behavior on color { ColorAnimation { duration: 100 } }
             TintedIcon {
                 anchors.centerIn: parent; width: 12; height: 12
-                source: "qrc:/icons/expand.png"
+                source: "qrc:/icons/expand.svg"
                 color: root.textDim
             }
             MouseArea {
@@ -115,7 +116,7 @@ Item {
             Behavior on color { ColorAnimation { duration: 100 } }
             TintedIcon {
                 anchors.centerIn: parent; width: 11; height: 11
-                source: "qrc:/icons/close.png"
+                source: "qrc:/icons/close.svg"
                 color: closeMa.containsMouse ? "#ffffff" : root.textDim
             }
             MouseArea { id: closeMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
@@ -150,6 +151,7 @@ Item {
                 Image {
                     source: "qrc:/icons/emblem.svg"
                     width: 28; height: 28
+                    sourceSize.width: 56; sourceSize.height: 56
                     fillMode: Image.PreserveAspectFit
                     anchors.verticalCenter: parent.verticalCenter
                 }
