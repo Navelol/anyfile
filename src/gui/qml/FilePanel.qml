@@ -334,10 +334,30 @@ Item {
     function openFolderPicker() {
         var dir = bridge.pickFolder("Select folder to convert")
         if (dir === "") return
+        scanFolderSafely(dir)
+    }
+
+    function scanFolderSafely(dir) {
+        var estimate = bridge.estimateFolderSize(dir, panel.folderRecurse, 10000)
+        if (estimate >= 10000) {
+            largeFolderDialog.folderPath = dir
+            largeFolderDialog.estimatedFiles = "10,000+"
+            largeFolderDialog.open()
+        } else {
+            performFolderScan(dir)
+        }
+    }
+
+    function performFolderScan(dir) {
         panel.folderPath        = dir
-        panel.folderFiles       = bridge.scanFolder(dir, panel.folderRecurse)
+        panel.folderFiles       = bridge.scanFolder(dir, panel.folderRecurse, 100000)
         panel.folderDefaultExt  = ""
         formatRulesModel.clear()
+        
+        // Warn if we hit the limit
+        if (panel.folderFiles.length >= 100000) {
+            scanLimitDialog.open()
+        }
     }
 
     function openOutDirPicker() {
@@ -874,10 +894,7 @@ Item {
                     onDropped: function(drop) {
                         if (drop.urls.length > 0) {
                             var p = bridge.urlToPath(drop.urls[0].toString())
-                            panel.folderPath       = p
-                            panel.folderFiles      = bridge.scanFolder(p, panel.folderRecurse)
-                            panel.folderDefaultExt = ""
-                            formatRulesModel.clear()
+                            scanFolderSafely(p)
                         }
                     }
                 }
@@ -915,10 +932,10 @@ Item {
                         color: panel.folderRecurse ? "#0e0e0f" : root.textMid }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            panel.folderRecurse    = !panel.folderRecurse
-                            panel.folderFiles      = bridge.scanFolder(panel.folderPath, panel.folderRecurse)
-                            panel.folderDefaultExt = ""
-                            formatRulesModel.clear()
+                            panel.folderRecurse = !panel.folderRecurse
+                            if (panel.folderPath !== "") {
+                                scanFolderSafely(panel.folderPath)
+                            }
                         }
                     }
                 }
@@ -1600,6 +1617,222 @@ Item {
                             formatRulesModel.append({ fromExt: from, toExt: to })
                             addRulePopup.close()
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Large folder warning dialog ───────────────────────────────────────────
+    Popup {
+        id: largeFolderDialog
+        property string folderPath: ""
+        property string estimatedFiles: ""
+        
+        anchors.centerIn: parent
+        width: 440
+        padding: 0
+        modal: true
+        closePolicy: Popup.CloseOnEscape
+        
+        background: Rectangle {
+            color: root.surface
+            radius: 12
+            border.color: root.border
+            border.width: 1
+        }
+        
+        Column {
+            width: parent.width
+            spacing: 0
+            
+            // Header
+            Rectangle {
+                width: parent.width
+                height: 54
+                color: "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "⚠️  Large Folder Detected"
+                    font.pixelSize: 14
+                    font.bold: true
+                    font.family: root.appFont
+                    color: root.textPrim
+                }
+            }
+            
+            // Content
+            Column {
+                width: parent.width
+                spacing: 14
+                topPadding: 10
+                leftPadding: 24
+                rightPadding: 24
+                bottomPadding: 10
+                
+                Text {
+                    width: parent.width - 48
+                    wrapMode: Text.WordWrap
+                    text: "This folder contains " + largeFolderDialog.estimatedFiles + " files."
+                    font.pixelSize: 12
+                    font.family: root.appFont
+                    color: root.textMid
+                }
+                
+                Text {
+                    width: parent.width - 48
+                    wrapMode: Text.WordWrap
+                    text: "Scanning large folders may take a while and could slow down the application. Do you want to continue?"
+                    font.pixelSize: 12
+                    font.family: root.appFont
+                    color: root.textMid
+                }
+            }
+            
+            // Buttons
+            Item {
+                width: parent.width
+                height: 70
+                
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: 10
+                    
+                    Rectangle {
+                        width: 96; height: 36; radius: 7
+                        color: largeFolderCancelMa.containsMouse ? root.border : root.surface
+                        border.color: root.border
+                        border.width: 1
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Cancel"
+                            font.pixelSize: 12
+                            font.family: root.appFont
+                            color: root.textMid
+                        }
+                        MouseArea {
+                            id: largeFolderCancelMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: largeFolderDialog.close()
+                        }
+                    }
+                    
+                    Rectangle {
+                        width: 96; height: 36; radius: 7
+                        color: continueMa.containsMouse ? Qt.lighter(root.accent, 1.1) : root.accent
+                        Behavior on color { ColorAnimation { duration: 100 } }
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Continue"
+                            font.pixelSize: 12
+                            font.family: root.appFont
+                            color: "#0e0e0f"
+                        }
+                        MouseArea {
+                            id: continueMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                performFolderScan(largeFolderDialog.folderPath)
+                                largeFolderDialog.close()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Scan limit reached dialog ─────────────────────────────────────────────
+    Popup {
+        id: scanLimitDialog
+        anchors.centerIn: parent
+        width: 440
+        padding: 0
+        modal: true
+        closePolicy: Popup.CloseOnEscape
+        
+        background: Rectangle {
+            color: root.surface
+            radius: 12
+            border.color: root.border
+            border.width: 1
+        }
+        
+        Column {
+            width: parent.width
+            spacing: 0
+            
+            // Header
+            Rectangle {
+                width: parent.width
+                height: 54
+                color: "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "ℹ️  Scan Limit Reached"
+                    font.pixelSize: 14
+                    font.bold: true
+                    font.family: root.appFont
+                    color: root.textPrim
+                }
+            }
+            
+            // Content
+            Column {
+                width: parent.width
+                spacing: 14
+                topPadding: 10
+                leftPadding: 24
+                rightPadding: 24
+                bottomPadding: 10
+                
+                Text {
+                    width: parent.width - 48
+                    wrapMode: Text.WordWrap
+                    text: "The folder scan stopped at 100,000 files to prevent performance issues."
+                    font.pixelSize: 12
+                    font.family: root.appFont
+                    color: root.textMid
+                }
+                
+                Text {
+                    width: parent.width - 48
+                    wrapMode: Text.WordWrap
+                    text: "Only the first 100,000 supported files will be available for conversion."
+                    font.pixelSize: 12
+                    font.family: root.appFont
+                    color: root.textMid
+                }
+            }
+            
+            // Button
+            Item {
+                width: parent.width
+                height: 70
+                
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 96; height: 36; radius: 7
+                    color: okMa.containsMouse ? Qt.lighter(root.accent, 1.1) : root.accent
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: "OK"
+                        font.pixelSize: 12
+                        font.family: root.appFont
+                        color: "#0e0e0f"
+                    }
+                    MouseArea {
+                        id: okMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: scanLimitDialog.close()
                     }
                 }
             }

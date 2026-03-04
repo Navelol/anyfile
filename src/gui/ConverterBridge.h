@@ -451,17 +451,46 @@ public:
     }
 
     // ── Scan a folder for files with known formats ─────────────────────────────
-    Q_INVOKABLE QStringList scanFolder(const QString& dirPath, bool recursive) const {
+    // ── Quick estimate of total entries in folder (for warning large scans) ───
+    Q_INVOKABLE int estimateFolderSize(const QString& dirPath, bool recursive, int maxCount = 50000) const {
+        fs::path root(dirPath.toStdString());
+        if (!fs::exists(root) || !fs::is_directory(root)) return 0;
+        
+        int count = 0;
+        auto countItems = [&](const fs::path& dir, bool recurse, auto& self) -> void {
+            if (count >= maxCount) return; // early exit
+            std::error_code ec;
+            fs::directory_iterator it(dir, ec);
+            if (ec) return;
+            for (auto& entry : it) {
+                if (count >= maxCount) return;
+                try {
+                    std::error_code entryEc;
+                    if (entry.is_regular_file(entryEc) && !entryEc) {
+                        ++count;
+                    } else if (recurse && entry.is_directory(entryEc) && !entryEc) {
+                        self(entry.path(), recurse, self);
+                    }
+                } catch (...) {}
+            }
+        };
+        countItems(root, recursive, countItems);
+        return count;
+    }
+
+    Q_INVOKABLE QStringList scanFolder(const QString& dirPath, bool recursive, int maxFiles = 100000) const {
         auto& reg = FormatRegistry::instance();
         QStringList result;
         fs::path root(dirPath.toStdString());
         if (!fs::exists(root) || !fs::is_directory(root)) return result;
 
         auto scan = [&](const fs::path& dir, bool recurse, auto& self) -> void {
+            if (result.size() >= maxFiles) return; // safety limit
             std::error_code ec;
             fs::directory_iterator it(dir, ec);
             if (ec) return; // permission denied or inaccessible — skip silently
             for (auto& entry : it) {
+                if (result.size() >= maxFiles) return; // check limit per entry
                 try {
                     if (entry.is_regular_file(ec) && !ec) {
                         if (reg.detect(entry.path()))
