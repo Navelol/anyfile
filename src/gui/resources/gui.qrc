@@ -10,10 +10,19 @@
         <file alias="AdvancedPanel.qml">qml/AdvancedPanel.qml</file>
         <file alias="ResultPanel.qml">qml/ResultPanel.qml</file>
         <file alias="ProgressBar2.qml">qml/ProgressBar2.qml</file>
+        <file alias="TintedIcon.qml">qml/TintedIcon.qml</file>
     </qresource>
     <qresource prefix="/icons">
         <file alias="app.png">icons/app.png</file>
-        <file alias="emblem.png">icons/emblem.png</file>
+        <file alias="emblem.svg">icons/emblem.svg</file>
+        <file alias="horizontal.svg">icons/horizontal.svg</file>
+        <file alias="file.png">icons/file.png</file>
+        <file alias="folder.png">icons/folder.png</file>
+        <file alias="gear.png">icons/gear.png</file>
+        <file alias="close.png">icons/close.png</file>
+        <file alias="minimize.png">icons/minimize.png</file>
+        <file alias="expand.png">icons/expand.png</file>
+        <file alias="tooltip.png">icons/tooltip.png</file>
     </qresource>
     <qresource prefix="/fonts">
         <file alias="Manrope-Regular.ttf">fonts/Manrope-Regular.ttf</file>

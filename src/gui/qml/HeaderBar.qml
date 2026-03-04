@@ -45,7 +45,7 @@ Item {
 
         // Horizontal wordmark (emblem + logotype baked into one crisp image)
         Image {
-            source: "qrc:/icons/horizontal.png"
+            source: "qrc:/icons/horizontal.svg"
             Layout.preferredHeight: 26
             Layout.preferredWidth: implicitWidth * (26 / implicitHeight)
             fillMode: Image.PreserveAspectFit
@@ -81,10 +81,10 @@ Item {
             width: 30; height: 30; radius: 7; color: minMa.containsMouse ? root.surfaceHi : "transparent"
             Layout.alignment: Qt.AlignVCenter
             Behavior on color { ColorAnimation { duration: 100 } }
-            Text {
-                anchors.centerIn: parent; text: "\u2212"
-                font.pixelSize: 14; font.weight: Font.Medium
-                font.family: root.appFont; color: root.textDim
+            TintedIcon {
+                anchors.centerIn: parent; width: 12; height: 12
+                source: "qrc:/icons/minimize.png"
+                color: root.textDim
             }
             MouseArea { id: minMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.showMinimized() }
         }
@@ -95,11 +95,10 @@ Item {
             width: 30; height: 30; radius: 7; color: maxMa.containsMouse ? root.surfaceHi : "transparent"
             Layout.alignment: Qt.AlignVCenter
             Behavior on color { ColorAnimation { duration: 100 } }
-            Text {
-                anchors.centerIn: parent
-                text: root.visibility === Window.Maximized ? "\u2752" : "\u25A1"
-                font.pixelSize: root.visibility === Window.Maximized ? 11 : 13
-                font.weight: Font.Medium; font.family: root.appFont; color: root.textDim
+            TintedIcon {
+                anchors.centerIn: parent; width: 12; height: 12
+                source: "qrc:/icons/expand.png"
+                color: root.textDim
             }
             MouseArea {
                 id: maxMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -114,11 +113,10 @@ Item {
             color: closeMa.containsMouse ? root.errorClr : "transparent"
             Layout.alignment: Qt.AlignVCenter
             Behavior on color { ColorAnimation { duration: 100 } }
-            Text {
-                anchors.centerIn: parent; text: "\u00D7"
-                font.pixelSize: 16; font.weight: Font.Medium
-                font.family: root.appFont
-                color: closeMa.containsMouse ? "#fff" : root.textDim
+            TintedIcon {
+                anchors.centerIn: parent; width: 11; height: 11
+                source: "qrc:/icons/close.png"
+                color: closeMa.containsMouse ? "#ffffff" : root.textDim
             }
             MouseArea { id: closeMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
         }
@@ -150,7 +148,7 @@ Item {
             Row {
                 spacing: 10
                 Image {
-                    source: "qrc:/icons/emblem.png"
+                    source: "qrc:/icons/emblem.svg"
                     width: 28; height: 28
                     fillMode: Image.PreserveAspectFit
                     anchors.verticalCenter: parent.verticalCenter

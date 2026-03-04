@@ -125,13 +125,11 @@ ApplicationWindow {
             Column {
                 anchors.centerIn: parent
                 spacing: 12
-                Image {
+                Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    source: "qrc:/icons/folder.svg"
-                    width: 48
-                    height: 48
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
+                    text: "⬇"
+                    font.pixelSize: 52
+                    color: root.accent
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter

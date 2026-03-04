@@ -8,6 +8,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     QuickControls2
     Qml
     Widgets
+    Svg
 )
 
 qt_standard_project_setup()
@@ -25,8 +26,16 @@ qt_add_resources(anyfile_gui "gui_resources"
     FILES
         resources/icons/app.png
         resources/icons/app.ico
-        resources/icons/emblem.png
-        resources/icons/horizontal.png
+        resources/icons/emblem.svg
+        resources/icons/horizontal.svg
+        resources/icons/file.png
+        resources/icons/folder.png
+        resources/icons/gear.png
+        resources/icons/cogwheel.svg
+        resources/icons/close.png
+        resources/icons/minimize.png
+        resources/icons/expand.png
+        resources/icons/tooltip.png
         resources/fonts/Manrope-Regular.ttf
 )
 
@@ -47,6 +56,7 @@ qt_add_qml_module(anyfile_gui
         qml/ResultPanel.qml
         qml/ProgressBar2.qml
         qml/FieldDropdown.qml
+        qml/TintedIcon.qml
     SOURCES
         ConverterBridge.h
 )
@@ -59,6 +69,7 @@ target_link_libraries(anyfile_gui PRIVATE
     Qt6::QuickControls2
     Qt6::Qml
     Qt6::Widgets
+    Qt6::Svg
     converter_core
 )
 

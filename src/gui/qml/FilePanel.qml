@@ -563,10 +563,9 @@ Item {
     ColumnLayout {
         anchors.left: parent.left; anchors.right: parent.right
         anchors.top: parent.top; anchors.bottom: advPanel.top
-        anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.topMargin: 20
+        anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.topMargin: 12
         anchors.bottomMargin: 4
-        spacing: 14
-        clip: true
+        spacing: 10
 
         // Mode tabs
         Row {
@@ -574,24 +573,13 @@ Item {
             Repeater {
                 model: ["files", "folder"]
                 delegate: Rectangle {
-                    width: tabRow.implicitWidth + 22; height: 30; radius: 8
+                    width: tabLbl.implicitWidth + 22; height: 30; radius: 8
                     color: panel.mode === index ? root.accent : (tabMa.containsMouse ? root.border : root.surface)
                     Behavior on color { ColorAnimation { duration: 120 } }
-                    Row {
-                        id: tabRow
-                        anchors.centerIn: parent
-                        spacing: 6
-                        Image {
-                            source: index === 0 ? "qrc:/icons/file.svg" : "qrc:/icons/folder.svg"
-                            width: 12; height: 12
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
-                        }
-                        Text {
-                            id: tabLbl; text: modelData
-                            font.pixelSize: 11; font.bold: true; font.family: root.appFont
-                            color: panel.mode === index ? "#0e0e0f" : root.textMid
-                        }
+                    Text {
+                        id: tabLbl; anchors.centerIn: parent; text: modelData
+                        font.pixelSize: 11; font.bold: true; font.family: root.appFont
+                        color: panel.mode === index ? "#0e0e0f" : root.textMid
                     }
                     MouseArea {
                         id: tabMa; anchors.fill: parent; hoverEnabled: true
@@ -613,7 +601,7 @@ Item {
             Rectangle {
                 visible: batchModel.count === 0
                 Layout.fillWidth: true
-                Layout.preferredHeight: 120
+                Layout.fillHeight: true
                 radius: 8
                 color: emptyDropMa.containsMouse || emptyDrop.containsDrag ? root.surfaceHi : root.surface
                 border.color: emptyDrop.containsDrag ? root.accent
@@ -631,18 +619,35 @@ Item {
                 }
 
                 Column {
-                    anchors.centerIn: parent; spacing: 8
-                    Image {
+                    id: fileDropContent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 16
+                    opacity: 0
+                    transform: Translate { id: fileDropSlide; y: 18 }
+
+                    function playIn() {
+                        opacity = 0; fileDropSlide.y = 18
+                        fileDropInAnim.start()
+                    }
+                    ParallelAnimation {
+                        id: fileDropInAnim
+                        NumberAnimation { target: fileDropContent; property: "opacity"; to: 1; duration: 220; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: fileDropSlide; property: "y"; to: 0; duration: 220; easing.type: Easing.OutQuad }
+                    }
+                    Component.onCompleted: playIn()
+                    Connections { target: panel; function onModeChanged() { if (panel.mode === 0) fileDropContent.playIn() } }
+
+                    TintedIcon {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        source: "qrc:/icons/file.svg"
-                        width: 34; height: 34
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
+                        width: 64; height: 64
+                        source: "qrc:/icons/file.png"
+                        color: root.textDim
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "drop files here or click to browse"
-                        font.pixelSize: 12; font.family: root.appFont; color: root.textDim
+                        font.pixelSize: 13; font.family: root.appFont; color: root.textDim
                     }
                 }
                 MouseArea {
@@ -913,16 +918,14 @@ Item {
                                 }
                                 border.width: 1
                                 Behavior on color { ColorAnimation { duration: 80 } }
-                                Image {
+                                TintedIcon {
                                     anchors.centerIn: parent
-                                    source: "qrc:/icons/settings.svg"
-                                    width: 12; height: 12
-                                    fillMode: Image.PreserveAspectFit
-                                    smooth: true
-                                    opacity: {
+                                    width: 13; height: 13
+                                    source: "qrc:/icons/cogwheel.svg"
+                                    color: {
                                         var item = batchModel.get(index)
                                         var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovVideoMaxRate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0 || item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2")
-                                        return hasOverride ? 1.0 : 0.75
+                                        return hasOverride ? root.accent : root.textDim
                                     }
                                 }
                                 MouseArea {
@@ -971,8 +974,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: panel.folderPath === ""
-                Layout.preferredHeight: panel.folderPath === "" ? 0 : 120
-                Layout.minimumHeight: panel.folderPath === "" ? 220 : 120
+                Layout.preferredHeight: panel.folderPath !== "" ? 120 : -1
                 radius: 8
                 color: folderZoneMa.containsMouse ? root.surfaceHi : root.surface
                 border.color: panel.folderPath !== "" ? root.accent
@@ -992,22 +994,54 @@ Item {
                 }
 
                 Column {
-                    anchors.centerIn: parent; spacing: 6
-                    Image {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        source: "qrc:/icons/folder.svg"
-                        width: panel.folderPath !== "" ? 30 : 38
-                        height: panel.folderPath !== "" ? 30 : 38
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
+                    id: folderDropContent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 16
+                    opacity: 0
+                    transform: Translate { id: folderDropSlide; y: 18 }
+
+                    function playIn() {
+                        opacity = 0; folderDropSlide.y = 18
+                        folderDropInAnim.start()
                     }
+                    ParallelAnimation {
+                        id: folderDropInAnim
+                        NumberAnimation { target: folderDropContent; property: "opacity"; to: 1; duration: 220; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: folderDropSlide; property: "y"; to: 0; duration: 220; easing.type: Easing.OutQuad }
+                    }
+                    Component.onCompleted: playIn()
+                    Connections { target: panel; function onModeChanged() { if (panel.mode === 1) folderDropContent.playIn() } }
+
+                    // Animated icon: crossfades between empty and filled state
+                    Item {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 64; height: 64
+
+                        TintedIcon {
+                            anchors.fill: parent
+                            source: "qrc:/icons/folder.png"
+                            color: root.accent
+                            opacity: panel.folderPath !== "" ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 200 } }
+                        }
+                        TintedIcon {
+                            anchors.fill: parent
+                            source: "qrc:/icons/folder.png"
+                            color: root.textDim
+                            opacity: panel.folderPath !== "" ? 0 : 1
+                            Behavior on opacity { NumberAnimation { duration: 200 } }
+                        }
+                    }
+
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: panel.folderPath !== ""
                               ? (panel.folderPath.split("/").pop() || panel.folderPath)
                               : "drop a folder or click to browse"
-                        font.pixelSize: 12; font.family: root.appFont
+                        font.pixelSize: 13; font.family: root.appFont
                         color: panel.folderPath !== "" ? root.textPrim : root.textDim
+                        Behavior on color { ColorAnimation { duration: 200 } }
                     }
                 }
                 MouseArea {
@@ -1110,18 +1144,13 @@ Item {
                                     font.pixelSize: 11; font.family: root.appFont; color: root.accent }
                             }
                             // Gear indicator for encoding overrides
-                            Text {
+                            TintedIcon {
                                 visible: parent.hasOverride
-                                text: ""; font.pixelSize: 11; color: root.accent
+                                width: 13; height: 13
+                                source: "qrc:/icons/cogwheel.svg"
+                                color: root.accent
                                 ToolTip.visible: editRuleMa.containsMouse; ToolTip.delay: 300
                                 ToolTip.text: "has encoding settings — click to edit"
-                                Image {
-                                    anchors.centerIn: parent
-                                    source: "qrc:/icons/settings.svg"
-                                    width: 11; height: 11
-                                    fillMode: Image.PreserveAspectFit
-                                    smooth: true
-                                }
                             }
                             Item { Layout.fillWidth: true }
                             // Edit button
@@ -1307,7 +1336,7 @@ Item {
                     Text {
                         id: fcdLbl; anchors.centerIn: parent
                         text: !panel.folderSameDir && panel.folderOutDir !== ""
-                            ? ("folder " + panel.folderOutDir.split("/").pop())
+                              ? ("📁 " + panel.folderOutDir.split("/").pop())
                               : "choose folder..."
                         font.pixelSize: 11; font.family: root.appFont
                         color: !panel.folderSameDir ? "#0e0e0f" : root.textMid
