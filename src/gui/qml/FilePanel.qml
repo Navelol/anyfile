@@ -15,11 +15,18 @@ Item {
     ListModel { id: batchModel }
     property string overrideExt: ""   // if set, all enabled rows use this ext
 
-    // Categories present in current batch (drives Global Advanced Options visibility)
+    // Categories present in current batch/folder (drives Global Advanced Options visibility)
     property var presentCategories: {
         var cats = {}
-        for (var i = 0; i < batchModel.count; i++)
-            cats[bridge.categoryFor(batchModel.get(i).sourceExt)] = true
+        if (mode === 0) {
+            for (var i = 0; i < batchModel.count; i++)
+                cats[bridge.categoryFor(batchModel.get(i).sourceExt)] = true
+        } else {
+            for (var j = 0; j < folderFiles.length; j++) {
+                var ext = bridge.detectFormat(folderFiles[j])
+                if (ext !== "") cats[bridge.categoryFor(ext)] = true
+            }
+        }
         return Object.keys(cats)
     }
 
@@ -114,23 +121,57 @@ Item {
         return specs
     }
 
-    // Resolve target ext for a folder file using rules then default
+    // Resolve target ext for a folder file using rules then default,
+    // but only return it if the file can actually be converted to that ext.
     function resolveTargetForFolder(filePath) {
         var src = bridge.detectFormat(filePath)
+        var tgt = ""
         for (var i = 0; i < formatRulesModel.count; i++) {
-            if (formatRulesModel.get(i).fromExt === src)
-                return formatRulesModel.get(i).toExt
+            if (formatRulesModel.get(i).fromExt === src) {
+                tgt = formatRulesModel.get(i).toExt
+                break
+            }
         }
-        return panel.folderDefaultExt
+        if (tgt === "") tgt = panel.folderDefaultExt
+        if (tgt === "") return ""
+        // Verify the file can actually convert to this target
+        var fmts = bridge.formatsFor(filePath)
+        if (fmts.indexOf(tgt) < 0) return ""
+        return tgt
     }
 
-    // Build folder job specs (each file gets a resolved target)
+    // Build folder job specs (each file gets a resolved target + encoding overrides)
     function buildFolderJobSpecs() {
         var specs = []
         for (var i = 0; i < folderFiles.length; i++) {
-            var tgt = resolveTargetForFolder(folderFiles[i])
+            var fp  = folderFiles[i]
+            var src = bridge.detectFormat(fp)
+            var tgt = ""
+            var ruleIdx = -1
+            for (var r = 0; r < formatRulesModel.count; r++) {
+                if (formatRulesModel.get(r).fromExt === src) { tgt = formatRulesModel.get(r).toExt; ruleIdx = r; break }
+            }
+            if (tgt === "") tgt = folderDefaultExt
             if (tgt === "") continue
-            specs.push({ path: folderFiles[i], ext: tgt })
+            var fmts = bridge.formatsFor(fp)
+            if (fmts.indexOf(tgt) < 0) continue
+            var spec = { path: fp, ext: tgt }
+            if (ruleIdx >= 0) {
+                var rule = formatRulesModel.get(ruleIdx)
+                if (rule.ovVideoCodec   && rule.ovVideoCodec   !== "") spec.videoCodec   = rule.ovVideoCodec
+                if (rule.ovAudioCodec   && rule.ovAudioCodec   !== "") spec.audioCodec   = rule.ovAudioCodec
+                if (rule.ovAudioBitrate && rule.ovAudioBitrate !== "") spec.audioBitrate = rule.ovAudioBitrate
+                if (rule.ovResolution   && rule.ovResolution   !== "") spec.resolution   = rule.ovResolution
+                if (rule.ovFramerate    && rule.ovFramerate    !== "") spec.framerate     = rule.ovFramerate
+                if (rule.ovRateMode === "vbr1" || rule.ovRateMode === "vbr2") {
+                    spec.rateMode = rule.ovRateMode
+                    if (rule.ovVideoBitrate && rule.ovVideoBitrate !== "") spec.videoBitrate = rule.ovVideoBitrate
+                    if (rule.ovVideoMaxRate && rule.ovVideoMaxRate !== "") spec.videoMaxRate = rule.ovVideoMaxRate
+                } else if (rule.ovCrf >= 0) {
+                    spec.crf = rule.ovCrf
+                }
+            }
+            specs.push(spec)
         }
         return specs
     }
@@ -404,17 +445,21 @@ Item {
                 return false
             }
 
+            property int folderConvertCount: {
+                var fn = 0
+                for (var i = 0; i < panel.folderFiles.length; i++)
+                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") fn++
+                return fn
+            }
+            property int folderSkipCount: panel.folderFiles.length - folderConvertCount
+
             property string label: {
                 if (bridge.converting) return "converting..."
                 if (panel.mode === 0) {
                     var n = panel.enabledCount()
                     return n > 0 ? ("convert " + n + " file" + (n === 1 ? "" : "s") + " →") : "convert →"
                 }
-                // folder mode: count those with resolved targets
-                var fn = 0
-                for (var i = 0; i < panel.folderFiles.length; i++) {
-                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") fn++
-                }
+                var fn = folderConvertCount
                 return fn > 0 ? ("convert " + fn + " file" + (fn === 1 ? "" : "s") + " →") : "convert →"
             }
 
@@ -439,6 +484,18 @@ Item {
                     cursorShape: parent.parent.canConvert ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: if (parent.parent.canConvert) panel.doConvert()
                 }
+            }
+
+            // Skip note — folder mode only, when some files can't convert
+            Text {
+                anchors.left: convertBtn.right
+                anchors.leftMargin: 10
+                anchors.verticalCenter: convertBtn.verticalCenter
+                visible: panel.mode === 1 && !bridge.converting
+                         && convertRow.folderSkipCount > 0
+                         && convertRow.folderConvertCount > 0
+                text: convertRow.folderSkipCount + " will be skipped (unsupported)"
+                font.pixelSize: 10; font.family: root.appFont; color: root.textDim
             }
 
             // Cancel button — only visible while converting
@@ -495,11 +552,19 @@ Item {
     }
 
     // Top section: tabs, file/folder content, advanced options
+    AdvancedPanel {
+        id: advPanel
+        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: bottomSection.top
+        anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.bottomMargin: 6
+        targetExt: panel.primaryTargetExt()
+        presentCategories: panel.presentCategories
+    }
+
     ColumnLayout {
         anchors.left: parent.left; anchors.right: parent.right
-        anchors.top: parent.top; anchors.bottom: bottomSection.top
+        anchors.top: parent.top; anchors.bottom: advPanel.top
         anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.topMargin: 20
-        anchors.bottomMargin: 10
+        anchors.bottomMargin: 4
         spacing: 14
 
         // Mode tabs
@@ -997,6 +1062,9 @@ Item {
                         model: formatRulesModel
                         RowLayout {
                             width: parent.width; spacing: 8
+                            property bool hasOverride: model.ovVideoCodec !== "" || model.ovAudioCodec !== ""
+                                || model.ovAudioBitrate !== "" || model.ovCrf >= 0
+                                || model.ovRateMode === "vbr1" || model.ovRateMode === "vbr2"
                             Text { text: "." + model.fromExt + "  \u2192"
                                 font.pixelSize: 11; font.family: root.appFont; color: root.textMid }
                             Rectangle {
@@ -1005,12 +1073,44 @@ Item {
                                 Text { id: ruleTgtLbl; anchors.centerIn: parent; text: "." + model.toExt
                                     font.pixelSize: 11; font.family: root.appFont; color: root.accent }
                             }
+                            // Gear indicator for encoding overrides
+                            Text {
+                                visible: parent.hasOverride
+                                text: "\u2699"; font.pixelSize: 11; color: root.accent
+                                ToolTip.visible: editRuleMa.containsMouse; ToolTip.delay: 300
+                                ToolTip.text: "has encoding settings — click to edit"
+                            }
                             Item { Layout.fillWidth: true }
+                            // Edit button
+                            Rectangle {
+                                width: 20; height: 20; radius: 4
+                                color: editRuleMa.containsMouse ? root.surfaceHi : "transparent"
+                                Behavior on color { ColorAnimation { duration: 80 } }
+                                Text { anchors.centerIn: parent; text: "\u270e"; font.pixelSize: 10; color: root.textDim }
+                                MouseArea { id: editRuleMa; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        addRulePopup.fromExt    = model.fromExt
+                                        addRulePopup.arToExt    = model.toExt
+                                        addRulePopup.arRateMode = model.ovRateMode || "crf"
+                                        arVideoInput.setValue(model.ovVideoCodec || "")
+                                        arAudioInput.setValue(model.ovAudioCodec || "")
+                                        arCrfInput.setValue(model.ovCrf >= 0 ? model.ovCrf.toString() : "")
+                                        arVbTargetInput.setValue(model.ovVideoBitrate || "")
+                                        arVbMaxInput.setValue(model.ovVideoMaxRate || "")
+                                        arAudioBitrateInput.setValue(model.ovAudioBitrate || "")
+                                        arResolutionInput.text = model.ovResolution || ""
+                                        arFramerateInput.text  = model.ovFramerate  || ""
+                                        addRulePopup.reposition()
+                                        addRulePopup.open()
+                                    }
+                                }
+                            }
                             Rectangle {
                                 width: 20; height: 20; radius: 4
                                 color: rmRuleMa.containsMouse ? root.errorClr : "transparent"
                                 Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { anchors.centerIn: parent; text: "x"; font.pixelSize: 9
+                                Text { anchors.centerIn: parent; text: "\u2715"; font.pixelSize: 10
                                     color: root.textDim }
                                 MouseArea { id: rmRuleMa; anchors.fill: parent; hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
@@ -1035,6 +1135,17 @@ Item {
                             contentHeight: height
                             flickableDirection: Flickable.HorizontalFlick
                             clip: true
+
+                            WheelHandler {
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                onWheel: function(event) {
+                                    var delta = event.angleDelta.x !== 0 ? event.angleDelta.x : event.angleDelta.y
+                                    folderDefaultFlick.contentX = Math.max(0,
+                                        Math.min(folderDefaultFlick.contentWidth - folderDefaultFlick.width,
+                                                 folderDefaultFlick.contentX - delta * 0.5))
+                                }
+                            }
+
                             Row {
                                 id: folderDefaultRow
                                 y: (parent.height - height) / 2; spacing: 5
@@ -1084,18 +1195,27 @@ Item {
                     }
                 }
 
-                // Folder files preview list (first 8 + count)
-                Rectangle {
+                // Folder files list (fully scrollable)
+                Item {
                     Layout.fillWidth: true
-                    height: Math.min(folderPreviewList.contentHeight + 12, 160) + 12
-                    color: root.surface; radius: 8; border.color: root.border; border.width: 1; clip: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 60
                     visible: panel.folderFiles.length > 0
+                    clip: true
+
+                    AppScrollBar {
+                        id: folderListSB
+                        anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+                        width: 4; orientation: Qt.Vertical; flickable: folderPreviewList
+                    }
 
                     ListView {
                         id: folderPreviewList
-                        anchors.fill: parent; anchors.margins: 6
-                        model: Math.min(panel.folderFiles.length, 12)
-                        spacing: 3; clip: true
+                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom
+                                  right: folderListSB.visible ? folderListSB.left : parent.right
+                                  rightMargin: folderListSB.visible ? 4 : 0 }
+                        model: panel.folderFiles.length
+                        spacing: 2; clip: true
 
                         delegate: RowLayout {
                             width: folderPreviewList.width; spacing: 8
@@ -1107,19 +1227,9 @@ Item {
                                 font.pixelSize: 11; font.family: root.appFont
                                 color: tgt !== "" ? root.textPrim : root.textDim; elide: Text.ElideMiddle
                             }
-                            Text { text: tgt !== "" ? ("\u2192 ." + tgt) : "(skip)"
+                            Text { text: tgt !== "" ? ("\u2192 ." + tgt) : "skip"
                                 font.pixelSize: 10; font.family: root.appFont
                                 color: tgt !== "" ? root.accent : root.textDim }
-                        }
-
-                        footer: Item {
-                            visible: panel.folderFiles.length > 12
-                            height: visible ? 22 : 0
-                            Text {
-                                anchors.centerIn: parent
-                                text: "…and " + (panel.folderFiles.length - 12) + " more"
-                                font.pixelSize: 10; font.family: root.appFont; color: root.textDim
-                            }
                         }
                     }
                 }
@@ -1163,15 +1273,6 @@ Item {
                 }
             }
         }
-
-        // -- Advanced options --------------------------------------------------
-        AdvancedPanel {
-            id: advPanel
-            Layout.fillWidth: true
-            targetExt: panel.primaryTargetExt()
-            presentCategories: panel.presentCategories
-        }
-
     }
 
     // -- Per-file settings popup -----------------------------------------------
@@ -1523,68 +1624,294 @@ Item {
     // -- Add-rule popup --------------------------------------------------------
     Popup {
         id: addRulePopup
-        property string fromExt: ""
-        modal: true
+        property string fromExt:    ""
+        property string arToExt:    ""
+        property string arRateMode: "crf"
+        property int    animMs:     180
+        property int    slidePx:    8
+
+        modal: false
         padding: 14
+        width: 440
+        clip: true
+
+        // Smooth height: animate to content size, capped at panel height
+        property real targetH: Math.min(arContentCol.implicitHeight + padding * 2 + 16, panel.height - 20)
+        height: targetH
+        Behavior on targetH { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutCubic } }
+
+        property bool arShowVideo: ["mp4","mkv","webm","mov","avi","ts","m4v"].indexOf(arToExt) >= 0
+        property bool arShowAudio: ["mp4","mkv","webm","mov","avi","ts","m4v","mp3","flac","wav","ogg","opus","aac","m4a"].indexOf(arToExt) >= 0
+        property bool arShowGif:   arToExt === "gif"
+        property bool arSupportsVBR: ["mp4","mkv","mov","webm","avi","ts","m4v",""].indexOf(arToExt) >= 0
+
+        // Valid target formats for the current fromExt
+        property var validTargets: {
+            var from = fromExt
+            if (from === "") return []
+            for (var i = 0; i < panel.folderFiles.length; i++) {
+                if (bridge.detectFormat(panel.folderFiles[i]) === from)
+                    return bridge.formatsFor(panel.folderFiles[i])
+            }
+            return bridge.formatsFor("file." + from)
+        }
+
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: addRulePopup.animMs; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "y"; from: addRulePopup.y - addRulePopup.slidePx; to: addRulePopup.y; duration: addRulePopup.animMs; easing.type: Easing.OutCubic }
+            }
+        }
+        exit: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: addRulePopup.animMs; easing.type: Easing.InCubic }
+                NumberAnimation { property: "y"; from: addRulePopup.y; to: addRulePopup.y - addRulePopup.slidePx; duration: addRulePopup.animMs; easing.type: Easing.InCubic }
+            }
+        }
 
         background: Rectangle {
             color: root.surfaceHi; radius: 10
-            border.color: root.border; border.width: 1
+            border.color: root.accent; border.width: 1
         }
 
+        function reposition() {
+            x = Math.max(4, Math.min(panel.width  - width  - 4, panel.width  / 2 - width  / 2))
+            y = Math.max(4, Math.min(panel.height - height - 4, panel.height / 2 - height / 2))
+        }
+
+        onTargetHChanged: if (visible) reposition()
+
         function openFor(srcExt, anchor) {
-            fromExt = srcExt
-            arFromInput.text = srcExt
-            arToInput.text   = ""
-            if (anchor) {
-                var pos = anchor.mapToItem(panel, 0, anchor.height + 4)
-                x = Math.min(pos.x, panel.width - implicitWidth - 4)
-                y = Math.min(pos.y, panel.height - implicitHeight - 4)
-            } else {
-                x = panel.width  / 2 - implicitWidth  / 2
-                y = panel.height / 2 - implicitHeight / 2
-            }
+            fromExt    = srcExt
+            arToExt    = ""
+            arRateMode = "crf"
+            arVideoInput.setValue("")
+            arAudioInput.setValue("")
+            arCrfInput.setValue("")
+            arVbTargetInput.setValue("")
+            arVbMaxInput.setValue("")
+            arAudioBitrateInput.setValue("")
+            arResolutionInput.text = ""
+            arFramerateInput.text  = ""
+            reposition()
             open()
         }
 
-        contentItem: ColumnLayout {
-            spacing: 12
-            width: 240
+        contentItem: ScrollView {
+            clip: true
+            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
-            Text { text: "add format rule"; font.pixelSize: 12; font.bold: true
-                font.family: root.appFont; color: root.textPrim }
+            ColumnLayout {
+            id: arContentCol
+            spacing: 10
+            width: addRulePopup.width - addRulePopup.padding * 2 - 12
 
-            RowLayout { spacing: 8
+            // Header row: from → to
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+
+                // From ext (display-only when pre-filled, editable otherwise)
                 ColumnLayout { spacing: 4
-                    Text { text: "from ext"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                    Text { text: "from"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
                     Rectangle {
-                        width: 90; height: 30; radius: 6
-                        color: root.surface; border.color: arFromInput.activeFocus ? root.accent : root.border; border.width: 1
+                        width: 80; height: 30; radius: 6
+                        color: root.surface; border.color: arFromTI.activeFocus ? root.accent : root.border; border.width: 1
                         TextInput {
-                            id: arFromInput; anchors.fill: parent; anchors.margins: 6
+                            id: arFromTI; anchors.fill: parent; anchors.margins: 6
+                            text: addRulePopup.fromExt
                             font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
+                            onTextEdited: addRulePopup.fromExt = text.trim().replace(/^\./, "")
                             Text { visible: !parent.text.length; anchors.fill: parent; text: "mp4"
                                 font.pixelSize: 12; font.family: root.appFont; color: root.textDim }
                         }
                     }
                 }
-                Text { text: "\u2192"; font.pixelSize: 18; color: root.textDim; Layout.alignment: Qt.AlignVCenter | Qt.AlignBottom; bottomPadding: 4 }
-                ColumnLayout { spacing: 4
-                    Text { text: "to ext"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+
+                Text { text: "\u2192"; font.pixelSize: 18; color: root.textDim
+                    Layout.alignment: Qt.AlignBottom; bottomPadding: 6 }
+
+                // To ext — dropdown of valid target formats for this fromExt
+                ColumnLayout { spacing: 4; Layout.fillWidth: true
+                    Text { text: "to"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+
                     Rectangle {
-                        width: 90; height: 30; radius: 6
-                        color: root.surface; border.color: arToInput.activeFocus ? root.accent : root.border; border.width: 1
-                        TextInput {
-                            id: arToInput; anchors.fill: parent; anchors.margins: 6
-                            font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
-                            Text { visible: !parent.text.length; anchors.fill: parent; text: "mp3"
-                                font.pixelSize: 12; font.family: root.appFont; color: root.textDim }
+                        id: arToDropBtn
+                        Layout.fillWidth: true; height: 30; radius: 6
+                        color: root.surface
+                        border.color: addRulePopup.arToExt !== "" ? root.accent : root.border; border.width: 1
+
+                        RowLayout {
+                            anchors.fill: parent; anchors.margins: 6; spacing: 4
+                            Text {
+                                Layout.fillWidth: true
+                                text: addRulePopup.arToExt !== "" ? ("." + addRulePopup.arToExt) : "pick format…"
+                                font.pixelSize: 12; font.family: root.appFont
+                                color: addRulePopup.arToExt !== "" ? root.textPrim : root.textDim
+                            }
+                            Text { text: "▾"; font.pixelSize: 10; color: root.textDim }
+                        }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                // Position picker below this button in panel-local coords
+                                var pos = arToDropBtn.mapToItem(panel, 0, arToDropBtn.height + 4)
+                                arFormatPicker.x = Math.min(Math.max(pos.x, 4), panel.width - arFormatPicker.width - 4)
+                                var py = pos.y
+                                if (py + arFormatPicker.height > panel.height - 4)
+                                    py = arToDropBtn.mapToItem(panel, 0, -arFormatPicker.height - 4).y
+                                arFormatPicker.y = Math.max(4, py)
+                                arFormatPicker.open()
+                            }
                         }
                     }
                 }
             }
 
-            RowLayout { spacing: 8
+            // Rate mode tabs (video only)
+            Row {
+                visible: addRulePopup.arShowVideo && addRulePopup.arSupportsVBR
+                Layout.preferredHeight: visible ? 32 : 0
+                Behavior on Layout.preferredHeight { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutCubic } }
+                spacing: 6
+                Repeater {
+                    model: [{ id: "crf", label: "CRF" }, { id: "vbr1", label: "VBR 1-pass" }, { id: "vbr2", label: "VBR 2-pass" }]
+                    Rectangle {
+                        property bool active: addRulePopup.arRateMode === modelData.id
+                        width: 88; height: 26; radius: 7
+                        color: active ? root.accent : (arRmMa.containsMouse ? root.surfaceHi : root.surface)
+                        border.color: active ? root.accent : root.border; border.width: active ? 1.5 : 1
+                        Behavior on color { ColorAnimation { duration: 80 } }
+                        Text { anchors.centerIn: parent; text: modelData.label
+                            font.pixelSize: 10; font.family: root.appFont; font.bold: active
+                            color: active ? "#0e0e0f" : root.textDim }
+                        MouseArea { id: arRmMa; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                addRulePopup.arRateMode = modelData.id
+                                if (modelData.id === "crf") {
+                                    arVbTargetInput.setValue(""); arVbMaxInput.setValue("")
+                                } else {
+                                    arCrfInput.setValue("")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Encoding fields grid
+            GridLayout {
+                columns: 2; columnSpacing: 10; rowSpacing: 8
+                Layout.fillWidth: true
+
+                Text { text: "video codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: addRulePopup.arShowVideo; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown {
+                    id: arVideoInput
+                    visible: addRulePopup.arShowVideo; Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true; hint: "global default"
+                    options: {
+                        var t = addRulePopup.arToExt
+                        if (t === "webm") return ["libvpx-vp9","libvpx","libaom-av1"]
+                        if (t === "mov")  return ["libx264","libx265","prores_ks","h264_videotoolbox","copy"]
+                        if (t === "avi")  return ["mpeg4","libx264","libxvid","copy"]
+                        if (t === "mkv")  return ["libx264","libx265","libvpx-vp9","libaom-av1","h264_nvenc","hevc_nvenc","copy"]
+                        return ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","h264_videotoolbox","copy"]
+                    }
+                }
+
+                Item {
+                    visible: addRulePopup.arShowVideo; Layout.columnSpan: 2
+                    Layout.fillWidth: true; clip: true
+                    Layout.preferredHeight: visible
+                        ? (addRulePopup.arRateMode === "crf" ? arRateCrfPanel.implicitHeight : arRateVbrPanel.implicitHeight)
+                        : 0
+                    Behavior on Layout.preferredHeight { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutCubic } }
+
+                    // CRF panel — label above, full-width dropdown (matches audio codec style)
+                    Column {
+                        id: arRateCrfPanel
+                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                        spacing: 4
+                        opacity: addRulePopup.arRateMode === "crf" ? 1 : 0
+                        enabled: addRulePopup.arRateMode === "crf"
+                        y: addRulePopup.arRateMode === "crf" ? 0 : 6
+                        Behavior on opacity { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
+                        Behavior on y      { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
+                        Text { text: "crf"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                        FieldDropdown { id: arCrfInput; width: parent.width; height: 28
+                            hint: "global default"
+                            options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"] }
+                    }
+                    // VBR panel — label above, full-width dropdowns
+                    Column {
+                        id: arRateVbrPanel
+                        anchors { left: parent.left; right: parent.right; top: parent.top }
+                        spacing: 4
+                        opacity: addRulePopup.arRateMode !== "crf" ? 1 : 0
+                        enabled: addRulePopup.arRateMode !== "crf"
+                        y: addRulePopup.arRateMode !== "crf" ? 0 : 6
+                        Behavior on opacity { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
+                        Behavior on y      { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
+                        Text { text: "target bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                        FieldDropdown { id: arVbTargetInput; width: parent.width; height: 28
+                            hint: "4M, 8M"
+                            options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"] }
+                        Text { text: "max bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
+                        FieldDropdown { id: arVbMaxInput; width: parent.width; height: 28
+                            hint: "leave blank or 2× target"
+                            options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"] }
+                    }
+                }
+
+                Text { text: "audio codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: addRulePopup.arShowAudio; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown { id: arAudioInput
+                    visible: addRulePopup.arShowAudio; Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true; hint: "global default"
+                    options: {
+                        var t = addRulePopup.arToExt
+                        if (t === "webm" || t === "opus") return ["libopus","libvorbis"]
+                        if (t === "ogg")  return ["libvorbis","libopus"]
+                        if (t === "mp3")  return ["libmp3lame"]
+                        if (t === "flac") return ["flac"]
+                        if (t === "wav")  return ["pcm_s16le","pcm_s24le","pcm_f32le"]
+                        if (t === "aac" || t === "m4a") return ["aac","libfdk_aac"]
+                        if (t === "mov")  return ["aac","pcm_s16le","copy"]
+                        return ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
+                    }
+                }
+
+                Text { text: "audio bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: addRulePopup.arShowAudio; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                FieldDropdown { id: arAudioBitrateInput
+                    visible: addRulePopup.arShowAudio; Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true; hint: "global default"
+                    options: ["64k","96k","128k","192k","256k","320k"] }
+
+                Text { text: "resolution"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: addRulePopup.arShowGif; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                Rectangle { visible: addRulePopup.arShowGif; Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true; height: 28; radius: 6
+                    color: root.surface; border.color: arResolutionInput.activeFocus ? root.accent : root.border; border.width: 1; clip: true
+                    TextInput { id: arResolutionInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: "keep source"
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim } } }
+
+                Text { text: "framerate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                    visible: addRulePopup.arShowGif; Layout.preferredHeight: visible ? implicitHeight : 0 }
+                Rectangle { visible: addRulePopup.arShowGif; Layout.preferredHeight: visible ? 28 : 0
+                    Layout.fillWidth: true; height: 28; radius: 6
+                    color: root.surface; border.color: arFramerateInput.activeFocus ? root.accent : root.border; border.width: 1; clip: true
+                    TextInput { id: arFramerateInput; anchors.fill: parent; anchors.margins: 6
+                        font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        Text { visible: !parent.text.length; anchors.fill: parent; text: "keep source"
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textDim } } }
+            }
+
+            // Buttons
+            RowLayout { spacing: 8; Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 Rectangle {
                     width: arCnlLbl.implicitWidth + 16; height: 30; radius: 7
@@ -1596,26 +1923,116 @@ Item {
                         cursorShape: Qt.PointingHandCursor; onClicked: addRulePopup.close() }
                 }
                 Rectangle {
+                    property bool canAdd: addRulePopup.fromExt.trim() !== "" && addRulePopup.arToExt !== ""
                     width: arAddLbl.implicitWidth + 20; height: 30; radius: 7
-                    color: (arFromInput.text.trim() !== "" && arToInput.text.trim() !== "")
-                           ? (arAddMa.containsMouse ? root.accentDim : root.accent)
-                           : root.border
+                    color: canAdd ? (arAddMa.containsMouse ? root.accentDim : root.accent) : root.border
                     Behavior on color { ColorAnimation { duration: 80 } }
                     Text { id: arAddLbl; anchors.centerIn: parent; text: "add rule"
                         font.pixelSize: 11; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
                     MouseArea {
                         id: arAddMa; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: arFromInput.text.trim() !== "" && arToInput.text.trim() !== ""
-                                     ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        cursorShape: parent.canAdd ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
-                            var from = arFromInput.text.trim().replace(/^\./, "")
-                            var to   = arToInput.text.trim().replace(/^\./, "")
+                            if (!parent.canAdd) return
+                            var from = addRulePopup.fromExt.trim().replace(/^\./, "")
+                            var to   = addRulePopup.arToExt
                             if (from === "" || to === "") return
                             // Remove any existing rule for this from ext
                             for (var i = formatRulesModel.count - 1; i >= 0; i--)
                                 if (formatRulesModel.get(i).fromExt === from) formatRulesModel.remove(i)
-                            formatRulesModel.append({ fromExt: from, toExt: to })
+                            // Build encoding fields
+                            var crf = (addRulePopup.arRateMode === "crf" && arCrfInput.value !== "") ? parseInt(arCrfInput.value) : -1
+                            formatRulesModel.append({
+                                fromExt: from, toExt: to,
+                                ovVideoCodec:   arVideoInput.value,
+                                ovAudioCodec:   arAudioInput.value,
+                                ovRateMode:     addRulePopup.arRateMode,
+                                ovVideoBitrate: arVbTargetInput.value,
+                                ovVideoMaxRate: arVbMaxInput.value,
+                                ovAudioBitrate: arAudioBitrateInput.value,
+                                ovCrf:          crf,
+                                ovResolution:   arResolutionInput.text,
+                                ovFramerate:    arFramerateInput.text
+                            })
                             addRulePopup.close()
+                        }
+                    }
+                }
+            }
+        }
+        } // ScrollView
+    }
+
+    // -- Format target picker (top-level so coordinates are correct) -----------
+    Popup {
+        id: arFormatPicker
+        modal: false
+        padding: 8
+        width: 300
+        height: Math.min(arFmtCol.implicitHeight + 20, 340)
+        clip: true
+
+        background: Rectangle {
+            color: root.surface; radius: 8
+            border.color: root.border; border.width: 1
+        }
+
+        ScrollView {
+            anchors.fill: parent; clip: true
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+            Column {
+                id: arFmtCol
+                width: arFormatPicker.width - 20
+                spacing: 8
+                Repeater {
+                    model: bridge.allFormatsGrouped()
+                    delegate: Column {
+                        width: parent.width; spacing: 4
+
+                        // Only show the group if it has any valid targets
+                        property var filtered: {
+                            var valid = addRulePopup.validTargets
+                            var result = []
+                            for (var i = 0; i < modelData.exts.length; i++)
+                                if (valid.indexOf(modelData.exts[i]) >= 0)
+                                    result.push(modelData.exts[i])
+                            return result
+                        }
+                        visible: filtered.length > 0
+
+                        Text { text: modelData.icon + "  " + modelData.name
+                            font.pixelSize: 10; font.bold: true; font.family: root.appFont
+                            color: root.textDim; leftPadding: 2 }
+                        Flow {
+                            width: parent.width; spacing: 4
+                            Repeater {
+                                model: parent.parent.filtered
+                                Rectangle {
+                                    property bool isSel: addRulePopup.arToExt === modelData
+                                    width: fmtChipLbl.implicitWidth + 14; height: 24; radius: 6
+                                    color: isSel ? "#50b4ff" : (fmtChipMa.containsMouse ? root.border : root.surfaceHi)
+                                    border.color: isSel ? "#50b4ff" : root.border; border.width: 1
+                                    Behavior on color { ColorAnimation { duration: 60 } }
+                                    Text { id: fmtChipLbl; anchors.centerIn: parent
+                                        text: "." + modelData
+                                        font.pixelSize: 10; font.family: root.appFont; font.bold: isSel
+                                        color: isSel ? "#0e0e0f" : root.textMid }
+                                    MouseArea { id: fmtChipMa; anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            addRulePopup.arToExt = modelData
+                                            addRulePopup.arRateMode = "crf"
+                                            arVideoInput.setValue("")
+                                            arAudioInput.setValue("")
+                                            arCrfInput.setValue("")
+                                            arVbTargetInput.setValue("")
+                                            arVbMaxInput.setValue("")
+                                            arAudioBitrateInput.setValue("")
+                                            arFormatPicker.close()
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

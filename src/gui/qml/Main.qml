@@ -11,7 +11,7 @@ ApplicationWindow {
     width: 860
     height: 700
     minimumWidth: 700
-    minimumHeight: 580
+    minimumHeight: 680
     title: "anyfile"
     flags: Qt.Window | Qt.FramelessWindowHint
 

@@ -25,18 +25,10 @@ Column {
     property bool expanded: false
     property var  presentCategories: []
 
-    property bool showVideoFields: {
-        if (presentCategories.length === 0) return true
-        for (var i = 0; i < presentCategories.length; i++)
-            if (presentCategories[i] !== "Video") return false
-        return true
-    }
-    property bool showAudioFields: {
-        if (presentCategories.length === 0) return true
-        for (var j = 0; j < presentCategories.length; j++)
-            if (presentCategories[j] !== "Video" && presentCategories[j] !== "Audio") return false
-        return true
-    }
+    // Drive field visibility from targetExt directly — much simpler and correct
+    property bool showVideoFields: ["mp4","mkv","webm","mov","avi","ts","m4v"].indexOf(targetExt) >= 0
+    property bool showAudioFields: ["mp4","mkv","webm","mov","avi","ts","m4v",
+                                    "mp3","flac","wav","ogg","opus","aac","m4a"].indexOf(targetExt) >= 0
     property bool isGifTarget: targetExt === "gif"
 
     property var videoCodecOptions: {
