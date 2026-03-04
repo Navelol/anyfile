@@ -1169,22 +1169,58 @@ Item {
         property bool   supportsVBR: targetExt === "mp4" || targetExt === "mkv" || targetExt === "mov" || targetExt === "webm"
             || targetExt === "avi" || targetExt === "ts" || targetExt === "m4v" || targetExt === ""
         property string pfRateMode: "crf"
+        property int    animMs: 180
+        property int    slidePx: 8
         modal: false
+        clip: true
         padding: 14
         width: 420
         height: contentItem.implicitHeight + padding * 2
-        Behavior on height { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
         enter: Transition {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 140; easing.type: Easing.OutCubic }
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: animMs; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "y"; from: perFilePopup.y - slidePx; to: perFilePopup.y; duration: animMs; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "scale"; from: 0.985; to: 1.0; duration: animMs; easing.type: Easing.OutCubic }
+            }
         }
         exit: Transition {
-            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 110; easing.type: Easing.InCubic }
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: animMs; easing.type: Easing.InCubic }
+                NumberAnimation { property: "y"; from: perFilePopup.y; to: perFilePopup.y - slidePx; duration: animMs; easing.type: Easing.InCubic }
+                NumberAnimation { property: "scale"; from: 1.0; to: 0.985; duration: animMs; easing.type: Easing.InCubic }
+            }
         }
 
         background: Rectangle {
             color: root.surfaceHi; radius: 10
             border.color: root.accent; border.width: 1
+        }
+
+        function syncRowOverrides() {
+            var idx = rowIdx
+            if (idx < 0 || idx >= batchModel.count) return
+            batchModel.setProperty(idx, "outputName",     pfNameInput.text)
+            batchModel.setProperty(idx, "ovVideoCodec",   pfVideoInput.value)
+            batchModel.setProperty(idx, "ovAudioCodec",   pfAudioInput.value)
+            batchModel.setProperty(idx, "ovRateMode",     pfRateMode)
+            batchModel.setProperty(idx, "ovVideoBitrate", pfVideoBitrateInput.value)
+            batchModel.setProperty(idx, "ovVideoMaxRate", pfVideoMaxRateInput.value)
+            batchModel.setProperty(idx, "ovAudioBitrate", pfAudioBitrateInput.value)
+            batchModel.setProperty(idx, "ovCrf", pfRateMode === "crf" && pfCrfInput.value.length > 0 ? parseInt(pfCrfInput.value) : -1)
+            batchModel.setProperty(idx, "ovResolution",   pfResolutionInput.text)
+            batchModel.setProperty(idx, "ovFramerate",    pfFramerateInput.text)
+        }
+
+        function scheduleSync() {
+            syncDebounce.restart()
+        }
+
+        Timer {
+            id: syncDebounce
+            interval: 120
+            repeat: false
+            onTriggered: perFilePopup.syncRowOverrides()
         }
 
         function openFor(idx, anchor) {
@@ -1221,6 +1257,7 @@ Item {
             Row {
                 visible: perFilePopup.shouldShowVideoFields && perFilePopup.supportsVBR
                 Layout.preferredHeight: visible ? 32 : 0
+                Behavior on Layout.preferredHeight { NumberAnimation { duration: animMs; easing.type: Easing.InOutCubic } }
                 spacing: 6
                 Repeater {
                     model: [
@@ -1231,10 +1268,12 @@ Item {
                     Rectangle {
                         property bool active: perFilePopup.pfRateMode === modelData.id
                         width: 88; height: 26; radius: 7
+                        scale: active ? 1.0 : (pfRmMa.pressed ? 0.975 : 1.0)
                         color: active ? root.accent : (pfRmMa.containsMouse ? root.surfaceHi : root.surface)
                         border.color: active ? root.accent : root.border; border.width: active ? 1.5 : 1
-                        Behavior on color { ColorAnimation { duration: 80 } }
-                        Behavior on border.color { ColorAnimation { duration: 80 } }
+                        Behavior on color { ColorAnimation { duration: animMs; easing.type: Easing.InOutCubic } }
+                        Behavior on border.color { ColorAnimation { duration: animMs; easing.type: Easing.InOutCubic } }
+                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                         Text { anchors.centerIn: parent; text: modelData.label
                             font.pixelSize: 10; font.family: root.appFont; font.bold: active
                             color: active ? "#0e0e0f" : root.textDim }
@@ -1248,6 +1287,7 @@ Item {
                                 } else {
                                     pfCrfInput.setValue("")
                                 }
+                                perFilePopup.syncRowOverrides()
                             }
                         }
                     }
@@ -1262,6 +1302,8 @@ Item {
                     TextInput {
                         id: pfNameInput; anchors.fill: parent; anchors.margins: 6
                         font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        onTextEdited: perFilePopup.scheduleSync()
+                        onEditingFinished: perFilePopup.syncRowOverrides()
                         Text { visible: !parent.text.length; anchors.fill: parent; text: "keep original"
                             font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideRight }
                     }
@@ -1274,6 +1316,7 @@ Item {
                     Layout.preferredHeight: visible ? 28 : 0
                     Layout.fillWidth: true
                     hint: "global default"
+                    onValueChanged: perFilePopup.syncRowOverrides()
                     options: {
                         var tgt = perFilePopup.rowIdx >= 0 && perFilePopup.rowIdx < batchModel.count
                                   ? panel.effectiveTarget(perFilePopup.rowIdx) : ""
@@ -1284,25 +1327,82 @@ Item {
                         return ["libx264","libx265","libaom-av1","h264_nvenc","hevc_nvenc","h264_videotoolbox","libvpx-vp9","prores_ks","mpeg4","copy"]
                     }
                 }
-                Text { text: "target bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
-                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"; Layout.preferredHeight: visible ? implicitHeight : 0 }
-                FieldDropdown {
-                    id: pfVideoBitrateInput
-                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"
-                    Layout.preferredHeight: visible ? 28 : 0
+                Item {
+                    visible: perFilePopup.shouldShowVideoFields
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
-                    hint: "4M, 8M"
-                    options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"]
-                }
-                Text { text: "max bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
-                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"; Layout.preferredHeight: visible ? implicitHeight : 0 }
-                FieldDropdown {
-                    id: pfVideoMaxRateInput
-                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode !== "crf"
-                    Layout.preferredHeight: visible ? 28 : 0
-                    Layout.fillWidth: true
-                    hint: "leave blank or 2× target"
-                    options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"]
+                    clip: true
+                    Layout.preferredHeight: visible
+                                            ? (perFilePopup.pfRateMode === "crf"
+                                               ? rateCrfPanel.implicitHeight
+                                               : rateVbrPanel.implicitHeight)
+                                            : 0
+                    Behavior on Layout.preferredHeight { NumberAnimation { duration: animMs; easing.type: Easing.InOutCubic } }
+
+                    GridLayout {
+                        id: rateCrfPanel
+                        anchors.fill: parent
+                        columns: 2
+                        columnSpacing: 10
+                        rowSpacing: 8
+                        enabled: perFilePopup.pfRateMode === "crf"
+                        opacity: perFilePopup.pfRateMode === "crf" ? 1 : 0
+                        y: perFilePopup.pfRateMode === "crf" ? 0 : 6
+                        Behavior on opacity { NumberAnimation { duration: animMs; easing.type: Easing.InOutQuad } }
+                        Behavior on y { NumberAnimation { duration: animMs; easing.type: Easing.InOutQuad } }
+
+                        Text {
+                            text: "CRF"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                            Layout.preferredWidth: Math.max(pfLabelWidthRef.implicitWidth, implicitWidth)
+                        }
+                        FieldDropdown {
+                            id: pfCrfInput
+                            Layout.preferredHeight: 28
+                            Layout.fillWidth: true
+                            hint: "global default"
+                            onValueChanged: perFilePopup.syncRowOverrides()
+                            options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
+                        }
+                    }
+
+                    GridLayout {
+                        id: rateVbrPanel
+                        anchors.fill: parent
+                        columns: 2
+                        columnSpacing: 10
+                        rowSpacing: 8
+                        enabled: perFilePopup.pfRateMode !== "crf"
+                        opacity: perFilePopup.pfRateMode !== "crf" ? 1 : 0
+                        y: perFilePopup.pfRateMode !== "crf" ? 0 : 6
+                        Behavior on opacity { NumberAnimation { duration: animMs; easing.type: Easing.InOutQuad } }
+                        Behavior on y { NumberAnimation { duration: animMs; easing.type: Easing.InOutQuad } }
+
+                        Text {
+                            text: "target bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                            Layout.preferredWidth: Math.max(pfLabelWidthRef.implicitWidth, implicitWidth)
+                        }
+                        FieldDropdown {
+                            id: pfVideoBitrateInput
+                            Layout.preferredHeight: 28
+                            Layout.fillWidth: true
+                            hint: "4M, 8M"
+                            onValueChanged: perFilePopup.syncRowOverrides()
+                            options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"]
+                        }
+
+                        Text {
+                            text: "max bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                            Layout.preferredWidth: Math.max(pfLabelWidthRef.implicitWidth, implicitWidth)
+                        }
+                        FieldDropdown {
+                            id: pfVideoMaxRateInput
+                            Layout.preferredHeight: 28
+                            Layout.fillWidth: true
+                            hint: "leave blank or 2× target"
+                            onValueChanged: perFilePopup.syncRowOverrides()
+                            options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"]
+                        }
+                    }
                 }
                 Text { text: "audio codec"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                     visible: perFilePopup.shouldShowAudioFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
@@ -1312,6 +1412,7 @@ Item {
                     Layout.preferredHeight: visible ? 28 : 0
                     Layout.fillWidth: true
                     hint: "global default"
+                    onValueChanged: perFilePopup.syncRowOverrides()
                     options: {
                         var tgt = perFilePopup.rowIdx >= 0 && perFilePopup.rowIdx < batchModel.count
                                   ? panel.effectiveTarget(perFilePopup.rowIdx) : ""
@@ -1325,7 +1426,7 @@ Item {
                         return ["aac","libopus","libmp3lame","flac","libvorbis","pcm_s16le","pcm_s24le","copy"]
                     }
                 }
-                Text { text: "audio bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                Text { id: pfLabelWidthRef; text: "audio bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                     visible: perFilePopup.shouldShowAudioFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
                 FieldDropdown {
                     id: pfAudioBitrateInput
@@ -1333,17 +1434,8 @@ Item {
                     Layout.preferredHeight: visible ? 28 : 0
                     Layout.fillWidth: true
                     hint: "global default"
+                    onValueChanged: perFilePopup.syncRowOverrides()
                     options: ["64k","96k","128k","192k","256k","320k"]
-                }
-                Text { text: "CRF"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
-                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode === "crf"; Layout.preferredHeight: visible ? implicitHeight : 0 }
-                FieldDropdown {
-                    id: pfCrfInput
-                    visible: perFilePopup.shouldShowVideoFields && perFilePopup.pfRateMode === "crf"
-                    Layout.preferredHeight: visible ? 28 : 0
-                    Layout.fillWidth: true
-                    hint: "global default"
-                    options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
                 }
                 Text { text: "resolution"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                     visible: perFilePopup.shouldShowGifFields; Layout.preferredHeight: visible ? implicitHeight : 0 }
@@ -1355,6 +1447,8 @@ Item {
                     TextInput {
                         id: pfResolutionInput; anchors.fill: parent; anchors.margins: 6
                         font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        onTextEdited: perFilePopup.scheduleSync()
+                        onEditingFinished: perFilePopup.syncRowOverrides()
                         Text { visible: !parent.text.length; anchors.fill: parent; text: "keep source"
                             font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideRight }
                     }
@@ -1369,6 +1463,8 @@ Item {
                     TextInput {
                         id: pfFramerateInput; anchors.fill: parent; anchors.margins: 6
                         font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                        onTextEdited: perFilePopup.scheduleSync()
+                        onEditingFinished: perFilePopup.syncRowOverrides()
                         Text { visible: !parent.text.length; anchors.fill: parent; text: "keep source"
                             font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideRight }
                     }
@@ -1377,6 +1473,7 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true; spacing: 8
+                Layout.preferredHeight: 30
                 // Clear overrides button
                 Rectangle {
                     width: pfClrLbl.implicitWidth + 16; height: 30; radius: 7
@@ -1397,36 +1494,11 @@ Item {
                             pfCrfInput.setValue("")
                             pfResolutionInput.text = ""
                             pfFramerateInput.text = ""
+                            perFilePopup.syncRowOverrides()
                         }
                     }
                 }
                 Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: pfApplyLbl.implicitWidth + 20; height: 30; radius: 7
-                    color: pfApplyMa.containsMouse ? root.accentDim : root.accent
-                    Behavior on color { ColorAnimation { duration: 80 } }
-                    Text { id: pfApplyLbl; anchors.centerIn: parent; text: "apply"
-                        font.pixelSize: 11; font.bold: true; font.family: root.appFont; color: "#0e0e0f" }
-                    MouseArea {
-                        id: pfApplyMa; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            var idx = perFilePopup.rowIdx
-                            if (idx < 0 || idx >= batchModel.count) { perFilePopup.close(); return }
-                            batchModel.setProperty(idx, "outputName",     pfNameInput.text)
-                            batchModel.setProperty(idx, "ovVideoCodec",   pfVideoInput.value)
-                            batchModel.setProperty(idx, "ovAudioCodec",   pfAudioInput.value)
-                            batchModel.setProperty(idx, "ovRateMode",     perFilePopup.pfRateMode)
-                            batchModel.setProperty(idx, "ovVideoBitrate", pfVideoBitrateInput.value)
-                            batchModel.setProperty(idx, "ovVideoMaxRate", pfVideoMaxRateInput.value)
-                            batchModel.setProperty(idx, "ovAudioBitrate", pfAudioBitrateInput.value)
-                            batchModel.setProperty(idx, "ovCrf", perFilePopup.pfRateMode === "crf" && pfCrfInput.value.length > 0 ? parseInt(pfCrfInput.value) : -1)
-                            batchModel.setProperty(idx, "ovResolution",   pfResolutionInput.text)
-                            batchModel.setProperty(idx, "ovFramerate",    pfFramerateInput.text)
-                            perFilePopup.close()
-                        }
-                    }
-                }
             }
         }
     }
