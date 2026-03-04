@@ -17,23 +17,13 @@ namespace fs = std::filesystem;
 using namespace converter;
 
 // ── Terminal colors ───────────────────────────────────────────────────────────
-#ifdef PLATFORM_WINDOWS
-  #define COL_RESET  ""
-  #define COL_GREEN  ""
-  #define COL_YELLOW ""
-  #define COL_RED    ""
-  #define COL_CYAN   ""
-  #define COL_BOLD   ""
-  #define COL_DIM    ""
-#else
-  #define COL_RESET  "\033[0m"
-  #define COL_GREEN  "\033[32m"
-  #define COL_YELLOW "\033[33m"
-  #define COL_RED    "\033[31m"
-  #define COL_CYAN   "\033[36m"
-  #define COL_BOLD   "\033[1m"
-  #define COL_DIM    "\033[2m"
-#endif
+#define COL_RESET  "\033[0m"
+#define COL_GREEN  "\033[32m"
+#define COL_YELLOW "\033[33m"
+#define COL_RED    "\033[31m"
+#define COL_CYAN   "\033[36m"
+#define COL_BOLD   "\033[1m"
+#define COL_DIM    "\033[2m"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 static std::string humanSize(size_t bytes) {
@@ -60,6 +50,7 @@ static void printUsage() {
         << "    anyfile <dir> <map> [output_dir]   Batch with format map\n"
         << "    anyfile --formats\n"
         << "    anyfile --help\n\n"
+        << "    anyfile <dir> <ext> --list         Dry-run: list files that would be converted\n\n"
         << "  " COL_BOLD "Examples:" COL_RESET "\n"
         << "    anyfile video.avi mp4\n"
         << "    anyfile video.avi output.mp4\n"
@@ -70,7 +61,8 @@ static void printUsage() {
         << "    anyfile video.mov output.mp4 --video-codec libx265 --crf 18\n\n"
         << "  " COL_BOLD "Batch options:" COL_RESET "\n"
         << "    -r, --recursive         Recurse into subdirectories\n"
-        << "    --f, --force            Overwrite existing output files\n\n"
+        << "    --f, --force            Overwrite existing output files\n"
+        << "    --list                  Dry-run: list files that would be converted\n\n"
         << "  " COL_BOLD "Media options:" COL_RESET "\n"
         << "    --video-codec  <codec>  e.g. libx264, libx265, hevc_nvenc\n"
         << "    --audio-codec  <codec>  e.g. aac, libmp3lame, libopus\n"
@@ -212,7 +204,8 @@ static int runSingle(const ParsedArgs& args) {
 
 // ── Batch conversion ──────────────────────────────────────────────────────────
 static int runBatch(const ParsedArgs& args) {
-    fs::create_directories(args.outputDir);
+    if (!args.listOnly)
+        fs::create_directories(args.outputDir);
 
     std::cout << "  " << COL_DIM << "Input dir : " << COL_RESET << args.inputDir.string()  << "\n";
     std::cout << "  " << COL_DIM << "Output dir: " << COL_RESET << args.outputDir.string() << "\n";
@@ -246,6 +239,25 @@ static int runBatch(const ParsedArgs& args) {
 
     if (files.empty()) {
         std::cout << "  " << COL_YELLOW << "⚠ " << COL_RESET << "No files found in input directory.\n\n";
+        return 0;
+    }
+
+    // --list: dry-run, show what would be converted then exit
+    if (args.listOnly) {
+        int count = 0;
+        for (auto& file : files) {
+            std::string toExt = resolveTargetExt(file, args);
+            if (toExt.empty()) {
+                std::cout << "  " << COL_DIM << "skip  " << COL_RESET
+                          << file.filename().string() << "\n";
+            } else {
+                std::cout << "  " << COL_DIM << file.filename().string() << COL_RESET
+                          << " → " << file.stem().string() << "." << toExt << "\n";
+                ++count;
+            }
+        }
+        std::cout << "\n  " << COL_BOLD << count << " file" << (count == 1 ? "" : "s")
+                  << " would be converted" << COL_RESET << "\n\n";
         return 0;
     }
 
@@ -336,6 +348,11 @@ static int runBatch(const ParsedArgs& args) {
 int main(int argc, char* argv[]) {
     #ifdef _WIN32
         SetConsoleOutputCP(CP_UTF8);
+        // Enable ANSI escape code processing (Windows 10 1511+)
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        DWORD mode = 0;
+        if (GetConsoleMode(hOut, &mode))
+            SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     #endif
     printBanner();
 

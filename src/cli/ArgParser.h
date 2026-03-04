@@ -15,6 +15,7 @@ namespace converter {
 struct ParsedArgs {
     bool isHelp    = false;
     bool isFormats = false;
+    bool listOnly  = false;
     bool recursive = false;
     bool force     = false;
     bool isBatch   = false;
@@ -138,6 +139,7 @@ public:
             const std::string& arg = args[i];
 
             if (arg == "-r" || arg == "--recursive") { result.recursive = true; ++i; }
+            else if (arg == "--list")                  { result.listOnly  = true; ++i; }
             else if (arg == "--f" || arg == "--force") { result.force = true; ++i; }
             else if (auto v = consumeFlag(args, i, "--video-codec"))    { result.videoCodec   = v; }
             else if (auto v = consumeFlag(args, i, "--audio-codec"))    { result.audioCodec   = v; }
