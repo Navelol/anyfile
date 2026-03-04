@@ -566,6 +566,7 @@ Item {
         anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.topMargin: 20
         anchors.bottomMargin: 4
         spacing: 14
+        clip: true
 
         // Mode tabs
         Row {
@@ -573,13 +574,24 @@ Item {
             Repeater {
                 model: ["files", "folder"]
                 delegate: Rectangle {
-                    width: tabLbl.implicitWidth + 22; height: 30; radius: 8
+                    width: tabRow.implicitWidth + 22; height: 30; radius: 8
                     color: panel.mode === index ? root.accent : (tabMa.containsMouse ? root.border : root.surface)
                     Behavior on color { ColorAnimation { duration: 120 } }
-                    Text {
-                        id: tabLbl; anchors.centerIn: parent; text: modelData
-                        font.pixelSize: 11; font.bold: true; font.family: root.appFont
-                        color: panel.mode === index ? "#0e0e0f" : root.textMid
+                    Row {
+                        id: tabRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Image {
+                            source: index === 0 ? "qrc:/icons/file.svg" : "qrc:/icons/folder.svg"
+                            width: 12; height: 12
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                        }
+                        Text {
+                            id: tabLbl; text: modelData
+                            font.pixelSize: 11; font.bold: true; font.family: root.appFont
+                            color: panel.mode === index ? "#0e0e0f" : root.textMid
+                        }
                     }
                     MouseArea {
                         id: tabMa; anchors.fill: parent; hoverEnabled: true
@@ -620,7 +632,13 @@ Item {
 
                 Column {
                     anchors.centerIn: parent; spacing: 8
-                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: "📂"; font.pixelSize: 30 }
+                    Image {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        source: "qrc:/icons/file.svg"
+                        width: 34; height: 34
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "drop files here or click to browse"
@@ -895,11 +913,16 @@ Item {
                                 }
                                 border.width: 1
                                 Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { anchors.centerIn: parent; text: "\u2699"
-                                    font.pixelSize: 12; color: {
+                                Image {
+                                    anchors.centerIn: parent
+                                    source: "qrc:/icons/settings.svg"
+                                    width: 12; height: 12
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                    opacity: {
                                         var item = batchModel.get(index)
                                         var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovVideoMaxRate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0 || item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2")
-                                        return hasOverride ? root.accent : root.textDim
+                                        return hasOverride ? 1.0 : 0.75
                                     }
                                 }
                                 MouseArea {
@@ -946,7 +969,11 @@ Item {
             spacing: 12
 
             Rectangle {
-                Layout.fillWidth: true; height: 120; radius: 8
+                Layout.fillWidth: true
+                Layout.fillHeight: panel.folderPath === ""
+                Layout.preferredHeight: panel.folderPath === "" ? 0 : 120
+                Layout.minimumHeight: panel.folderPath === "" ? 220 : 120
+                radius: 8
                 color: folderZoneMa.containsMouse ? root.surfaceHi : root.surface
                 border.color: panel.folderPath !== "" ? root.accent
                               : (folderZoneMa.containsMouse ? root.textDim : root.border)
@@ -966,8 +993,14 @@ Item {
 
                 Column {
                     anchors.centerIn: parent; spacing: 6
-                    Text { anchors.horizontalCenter: parent.horizontalCenter
-                        text: panel.folderPath !== "" ? "📁" : "📂"; font.pixelSize: 28 }
+                    Image {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        source: "qrc:/icons/folder.svg"
+                        width: panel.folderPath !== "" ? 30 : 38
+                        height: panel.folderPath !== "" ? 30 : 38
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: panel.folderPath !== ""
@@ -1018,7 +1051,10 @@ Item {
             // -- Format rules editor (when folder has files) ---------------------
             ColumnLayout {
                 visible: panel.folderPath !== "" && panel.folderFiles.length > 0
-                Layout.fillWidth: true; spacing: 6
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 120
+                spacing: 6
 
                 // Section header
                 RowLayout {
@@ -1076,9 +1112,16 @@ Item {
                             // Gear indicator for encoding overrides
                             Text {
                                 visible: parent.hasOverride
-                                text: "\u2699"; font.pixelSize: 11; color: root.accent
+                                text: ""; font.pixelSize: 11; color: root.accent
                                 ToolTip.visible: editRuleMa.containsMouse; ToolTip.delay: 300
                                 ToolTip.text: "has encoding settings — click to edit"
+                                Image {
+                                    anchors.centerIn: parent
+                                    source: "qrc:/icons/settings.svg"
+                                    width: 11; height: 11
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                }
                             }
                             Item { Layout.fillWidth: true }
                             // Edit button
@@ -1237,7 +1280,9 @@ Item {
 
             RowLayout {
                 visible: panel.folderPath !== ""
-                Layout.fillWidth: true; spacing: 8
+                Layout.fillWidth: true
+                Layout.minimumHeight: 36
+                spacing: 8
 
                 Text { text: "output"; font.pixelSize: 10; font.bold: true
                     font.family: root.appFont; color: root.textDim; Layout.alignment: Qt.AlignVCenter }
@@ -1262,7 +1307,7 @@ Item {
                     Text {
                         id: fcdLbl; anchors.centerIn: parent
                         text: !panel.folderSameDir && panel.folderOutDir !== ""
-                              ? ("📁 " + panel.folderOutDir.split("/").pop())
+                            ? ("folder " + panel.folderOutDir.split("/").pop())
                               : "choose folder..."
                         font.pixelSize: 11; font.family: root.appFont
                         color: !panel.folderSameDir ? "#0e0e0f" : root.textMid

@@ -8,10 +8,10 @@ import Anyfile 1.0
 ApplicationWindow {
     id: root
     visible: true
-    width: 860
-    height: 700
+    width: 800
+    height: 800
     minimumWidth: 700
-    minimumHeight: 680
+    minimumHeight: 800
     title: "anyfile"
     flags: Qt.Window | Qt.FramelessWindowHint
 
@@ -125,11 +125,13 @@ ApplicationWindow {
             Column {
                 anchors.centerIn: parent
                 spacing: 12
-                Text {
+                Image {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "⬇"
-                    font.pixelSize: 52
-                    color: root.accent
+                    source: "qrc:/icons/folder.svg"
+                    width: 48
+                    height: 48
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
