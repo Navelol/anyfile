@@ -82,27 +82,30 @@ private:
         std::string audioCodec;
         std::string pixelFormat;
         int         crf = -1;
+        std::string audioBitrate;  // default audio bitrate (empty = codec default)
     };
 
     static Defaults defaultsFor(const std::string& outExt) {
+        // CRF 16: visually transparent for H.264 (lossless ~0-10, transparent ~16-18, normal 23)
+        // CRF 24: high quality for VP9 (scale 0-63, 24 = excellent)
         if (outExt == "mp4" || outExt == "m4v")
-            return { "libx264", "aac", "yuv420p", 23 };
+            return { "libx264", "aac", "yuv420p", 16, "320k" };
         if (outExt == "mkv")
-            return { "libx264", "aac", "yuv420p", 23 };
+            return { "libx264", "aac", "yuv420p", 16, "320k" };
         if (outExt == "webm")
-            return { "libvpx-vp9", "libopus", "yuv420p", 31 };
+            return { "libvpx-vp9", "libopus", "yuv420p", 24, "192k" };
         if (outExt == "mov")
-            return { "libx264", "aac", "yuv420p", 23 };
+            return { "libx264", "aac", "yuv420p", 16, "320k" };
         if (outExt == "avi")
-            return { "mpeg4", "libmp3lame", "yuv420p", -1 };
-        if (outExt == "mp3")  return { "", "libmp3lame", "", -1 };
-        if (outExt == "aac")  return { "", "aac",        "", -1 };
-        if (outExt == "ogg")  return { "", "libvorbis",  "", -1 };
-        if (outExt == "opus") return { "", "libopus",    "", -1 };
-        if (outExt == "flac") return { "", "flac",       "", -1 };
-        if (outExt == "wav")  return { "", "pcm_s16le",  "", -1 };
-        if (outExt == "m4a")  return { "", "aac",        "", -1 };
-        return { "", "", "", -1 };
+            return { "mpeg4", "libmp3lame", "yuv420p", -1, "320k" };
+        if (outExt == "mp3")  return { "", "libmp3lame", "", -1, "320k" };
+        if (outExt == "aac")  return { "", "aac",        "", -1, "320k" };
+        if (outExt == "ogg")  return { "", "libvorbis",  "", -1, "" };    // VBR-only
+        if (outExt == "opus") return { "", "libopus",    "", -1, "192k" };
+        if (outExt == "flac") return { "", "flac",       "", -1, "" };    // lossless
+        if (outExt == "wav")  return { "", "pcm_s16le",  "", -1, "" };    // lossless
+        if (outExt == "m4a")  return { "", "aac",        "", -1, "320k" };
+        return { "", "", "", -1, "" };
     }
 
     static std::vector<std::string> buildIcoArgs(const ConversionJob& job) {
@@ -179,6 +182,15 @@ private:
         std::string acodec = resolve(job.audioCodec,  def.audioCodec);
         std::string pix    = resolve(job.pixelFormat, def.pixelFormat);
         int         crf    = job.crf ? *job.crf : def.crf;
+        // Use default audio bitrate if not explicitly overridden.
+        // Skip for lossless/VBR-only codecs (flac, pcm_*, libvorbis) — they don't accept -b:a.
+        std::string defaultABitrate;
+        if (!job.audioBitrate && !def.audioBitrate.empty()) {
+            bool vbrOnlyCodec = (acodec == "flac" || acodec == "libvorbis"
+                              || acodec.rfind("pcm_", 0) == 0);
+            if (!vbrOnlyCodec)
+                defaultABitrate = def.audioBitrate;
+        }
 
         std::vector<std::string> args;
         args.push_back("-y");
@@ -205,11 +217,10 @@ private:
             // bufsize = 2× maxrate is a sensible default
             args.push_back("-bufsize"); args.push_back(*job.videoMaxRate);
         }
-        // Only set audio bitrate when the user explicitly requests one.
-        // Codecs like libvorbis and libopus use VBR quality modes by default
-        // and reject arbitrary CBR bitrates (libopus caps at 256 kbps; libvorbis
-        // doesn't support -b:a at all in the same way as libmp3lame).
-        if (job.audioBitrate) { args.push_back("-b:a"); args.push_back(*job.audioBitrate); }
+        // Apply audio bitrate: explicit override takes priority, then format default.
+        // Skip for lossless/VBR-only codecs (flac, pcm_*, libvorbis).
+        if (job.audioBitrate)            { args.push_back("-b:a"); args.push_back(*job.audioBitrate); }
+        else if (!defaultABitrate.empty()) { args.push_back("-b:a"); args.push_back(defaultABitrate); }
 
         if (job.resolution) {
             auto x = job.resolution->find('x');

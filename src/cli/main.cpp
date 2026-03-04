@@ -64,14 +64,18 @@ static void printUsage() {
         << "    --f, --force            Overwrite existing output files\n"
         << "    --list                  Dry-run: list files that would be converted\n\n"
         << "  " COL_BOLD "Media options:" COL_RESET "\n"
-        << "    --video-codec  <codec>  e.g. libx264, libx265, hevc_nvenc\n"
-        << "    --audio-codec  <codec>  e.g. aac, libmp3lame, libopus\n"
-        << "    --video-bitrate <rate>  e.g. 2M, 500k\n"
-        << "    --audio-bitrate <rate>  e.g. 192k, 320k\n"
-        << "    --resolution   <WxH>   e.g. 1920x1080, 1280x720\n"
-        << "    --framerate    <fps>   e.g. 24, 30, 60\n"
-        << "    --crf          <n>     Quality: 0 (best) - 51 (worst)\n"
-        << "    --pixel-format <fmt>   e.g. yuv420p, yuv444p\n\n";
+        << "    --vcodec, --video-codec  <codec>   e.g. libx264, libx265, hevc_nvenc\n"
+        << "    --acodec, --audio-codec  <codec>   e.g. aac, libmp3lame, libopus\n"
+        << "    --crf          <n>                 Quality: 0 (best) - 51 (worst), default 16\n"
+        << "    --vbitrate, --video-bitrate <rate> CBR video bitrate e.g. 8M, 500k\n"
+        << "    --vbr1-target  <rate>              VBR 1-pass target e.g. 6M\n"
+        << "    --vbr1-max     <rate>              VBR 1-pass max cap e.g. 9M\n"
+        << "    --vbr2-target  <rate>              VBR 2-pass target e.g. 6M\n"
+        << "    --vbr2-max     <rate>              VBR 2-pass max cap e.g. 9M\n"
+        << "    --abitrate, --audio-bitrate <rate> e.g. 320k (default), 192k\n"
+        << "    --res, --resolution <WxH>          e.g. 1920x1080, 1280x720\n"
+        << "    --framerate, --fps  <fps>          e.g. 24, 30, 60\n"
+        << "    --pixel-format <fmt>               e.g. yuv420p, yuv444p\n\n";
 }
 
 static void printFormats() {
@@ -115,7 +119,9 @@ static void applyOverrides(ConversionJob& job, const ParsedArgs& args) {
     job.videoCodec   = args.videoCodec;
     job.audioCodec   = args.audioCodec;
     job.videoBitrate = args.videoBitrate;
+    job.videoMaxRate = args.videoMaxRate;
     job.audioBitrate = args.audioBitrate;
+    job.twoPass      = args.twoPass;
     job.resolution   = args.resolution;
     job.framerate    = args.framerate;
     job.crf          = args.crf;
@@ -126,7 +132,9 @@ static void applyOverrides(ConversionJob& job, const ParsedArgs& args) {
 static void printOverrides(const ParsedArgs& args) {
     if (args.videoCodec  ) std::cout << "  " << COL_DIM << "Video codec   : " << COL_RESET << *args.videoCodec   << "\n";
     if (args.audioCodec  ) std::cout << "  " << COL_DIM << "Audio codec   : " << COL_RESET << *args.audioCodec   << "\n";
-    if (args.videoBitrate) std::cout << "  " << COL_DIM << "Video bitrate : " << COL_RESET << *args.videoBitrate << "\n";
+    if (args.videoBitrate) std::cout << "  " << COL_DIM << "Video bitrate : " << COL_RESET << *args.videoBitrate << (args.videoMaxRate ? " target" : "") << "\n";
+    if (args.videoMaxRate) std::cout << "  " << COL_DIM << "Video max rate: " << COL_RESET << *args.videoMaxRate  << "\n";
+    if (args.twoPass     ) std::cout << "  " << COL_DIM << "VBR mode      : " << COL_RESET << "2-pass\n";
     if (args.audioBitrate) std::cout << "  " << COL_DIM << "Audio bitrate : " << COL_RESET << *args.audioBitrate << "\n";
     if (args.resolution  ) std::cout << "  " << COL_DIM << "Resolution    : " << COL_RESET << *args.resolution   << "\n";
     if (args.framerate   ) std::cout << "  " << COL_DIM << "Framerate     : " << COL_RESET << *args.framerate    << "\n";

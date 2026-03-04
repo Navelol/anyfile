@@ -38,8 +38,10 @@ struct ParsedArgs {
     // Media encoding overrides
     std::optional<std::string> videoCodec;
     std::optional<std::string> audioCodec;
-    std::optional<std::string> videoBitrate;
+    std::optional<std::string> videoBitrate;   // VBR target / CBR rate (--bitrate / --vbr1-target / --vbr2-target)
+    std::optional<std::string> videoMaxRate;   // VBR max cap (--vbr1-max / --vbr2-max)
     std::optional<std::string> audioBitrate;
+    bool twoPass = false;                      // true when --vbr2-* flags used
     std::optional<std::string> resolution;
     std::optional<std::string> framerate;
     std::optional<int>         crf;
@@ -141,18 +143,38 @@ public:
             if (arg == "-r" || arg == "--recursive") { result.recursive = true; ++i; }
             else if (arg == "--list")                  { result.listOnly  = true; ++i; }
             else if (arg == "--f" || arg == "--force") { result.force = true; ++i; }
+            // Video codec: --video-codec, --vcodec
             else if (auto v = consumeFlag(args, i, "--video-codec"))    { result.videoCodec   = v; }
+            else if (auto v = consumeFlag(args, i, "--vcodec"))         { result.videoCodec   = v; }
+            // Audio codec: --audio-codec, --acodec
             else if (auto v = consumeFlag(args, i, "--audio-codec"))    { result.audioCodec   = v; }
+            else if (auto v = consumeFlag(args, i, "--acodec"))         { result.audioCodec   = v; }
+            // CBR / generic bitrate: --video-bitrate, --vbitrate, --bitrate
             else if (auto v = consumeFlag(args, i, "--video-bitrate"))  { result.videoBitrate = v; }
+            else if (auto v = consumeFlag(args, i, "--vbitrate"))       { result.videoBitrate = v; }
+            else if (auto v = consumeFlag(args, i, "--bitrate"))        { result.videoBitrate = v; }
+            // VBR 1-pass: --vbr1-target, --vbr1-max
+            else if (auto v = consumeFlag(args, i, "--vbr1-target"))    { result.videoBitrate = v; }
+            else if (auto v = consumeFlag(args, i, "--vbr1-max"))       { result.videoMaxRate = v; }
+            // VBR 2-pass: --vbr2-target, --vbr2-max
+            else if (auto v = consumeFlag(args, i, "--vbr2-target"))    { result.videoBitrate = v; result.twoPass = true; }
+            else if (auto v = consumeFlag(args, i, "--vbr2-max"))       { result.videoMaxRate = v; result.twoPass = true; }
+            // Audio bitrate: --audio-bitrate, --abitrate
             else if (auto v = consumeFlag(args, i, "--audio-bitrate"))  { result.audioBitrate = v; }
+            else if (auto v = consumeFlag(args, i, "--abitrate"))       { result.audioBitrate = v; }
+            // Resolution: --resolution, --res
             else if (auto v = consumeFlag(args, i, "--resolution"))     { result.resolution   = v; }
+            else if (auto v = consumeFlag(args, i, "--res"))            { result.resolution   = v; }
+            // Framerate: --framerate, --fps
             else if (auto v = consumeFlag(args, i, "--framerate"))      { result.framerate    = v; }
+            else if (auto v = consumeFlag(args, i, "--fps"))            { result.framerate    = v; }
             else if (auto v = consumeFlag(args, i, "--pixel-format"))   { result.pixelFormat  = v; }
+            // CRF quality factor: --crf
             else if (auto v = consumeFlag(args, i, "--crf")) {
                 try { result.crf = std::stoi(*v); }
                 catch (...) {
                     result.hasError = true;
-                    result.errorMsg = "--crf requires an integer (e.g. 23)";
+                    result.errorMsg = "--crf requires an integer (e.g. 16)";
                     return result;
                 }
             } else {
