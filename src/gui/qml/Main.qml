@@ -9,9 +9,9 @@ ApplicationWindow {
     id: root
     visible: true
     width: 860
-    height: 640
+    height: 700
     minimumWidth: 700
-    minimumHeight: 540
+    minimumHeight: 580
     title: "anyfile"
     flags: Qt.Window | Qt.FramelessWindowHint
 

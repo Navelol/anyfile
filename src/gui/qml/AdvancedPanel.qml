@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Column {
     id: adv
     spacing: 0
+    property int  animMs: 170
+    property bool _fadeArmed: false
 
     // ── Exposed properties ────────────────────────────────────────────────────
     property string targetExt: ""
@@ -35,6 +37,7 @@ Column {
             if (presentCategories[j] !== "Video" && presentCategories[j] !== "Audio") return false
         return true
     }
+    property bool isGifTarget: targetExt === "gif"
 
     property var videoCodecOptions: {
         var ext = adv.targetExt
@@ -61,6 +64,27 @@ Column {
         var ext = adv.targetExt
         return ext === "mp4" || ext === "mkv" || ext === "mov" || ext === "webm"
             || ext === "avi" || ext === "ts"  || ext === "m4v" || ext === ""
+    }
+
+    onTargetExtChanged: {
+        if (!adv._fadeArmed) { adv._fadeArmed = true; return }
+        if (adv.isGifTarget) {
+            videoCodec = ""; audioCodec = ""; audioBitrate = ""
+            videoBitrate = ""; videoMaxRate = ""; crfValue = ""; rateMode = "crf"
+            vcInput.setValue("")
+            acInput.setValue("")
+            abInput.setValue("")
+            vbTarget.setValue("")
+            vbMax.setValue("")
+            crfInput.setValue("")
+        }
+        advBody.opacity = 0.0
+        advBodyFadeIn.restart()
+    }
+    onPresentCategoriesChanged: {
+        if (!adv._fadeArmed) return
+        advBody.opacity = 0.0
+        advBodyFadeIn.restart()
     }
 
     // Apply a preset — handles both CRF and VBR presets
@@ -112,15 +136,26 @@ Column {
     // ── Collapsible body ──────────────────────────────────────────────────────
     Item {
         width: parent.width
-        height: adv.expanded ? advBody.implicitHeight + 16 : 0
+        height: adv.expanded ? advBody.implicitHeight + 12 : 0
         clip: true
-        Behavior on height { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on height { NumberAnimation { duration: animMs; easing.type: Easing.InOutCubic } }
 
         Column {
             id: advBody
             anchors.top: parent.top; anchors.topMargin: 8
             anchors.left: parent.left; anchors.right: parent.right
-            spacing: 10
+            spacing: 8
+            opacity: 1.0
+
+            NumberAnimation {
+                id: advBodyFadeIn
+                target: advBody
+                property: "opacity"
+                from: 0.0
+                to: 1.0
+                duration: adv.animMs
+                easing.type: Easing.InOutCubic
+            }
 
             // ── Preset cards — drag-scrollable ────────────────────────────────
             Column {
@@ -134,7 +169,7 @@ Column {
                 }
 
                 Item {
-                    width: parent.width; height: 60; clip: true
+                    width: parent.width; height: 54; clip: true
 
                     Item {
                         id: presetTrack
@@ -154,7 +189,7 @@ Column {
                                 model: adv.targetExt !== "" ? bridge.codecPresetsFor(adv.targetExt) : []
 
                                 Rectangle {
-                                    width: 140; height: 56; radius: 8; clip: true
+                                    width: 128; height: 50; radius: 8; clip: true
                                     color: cardMa.containsMouse && !dragH.active
                                            ? root.surfaceHi : root.surface
                                     border.width: 1
@@ -179,13 +214,13 @@ Column {
                                     Column {
                                         anchors { left: parent.left; right: parent.right
                                                   top: parent.top; margins: 8 }
-                                        spacing: 3
+                                        spacing: 2
                                         Text { text: modelData.name
-                                            font.pixelSize: 11; font.family: root.appFont
+                                            font.pixelSize: 10; font.family: root.appFont
                                             color: root.textPrim; font.bold: true
                                             width: parent.width - 2; wrapMode: Text.WordWrap }
                                         Text { text: modelData.desc
-                                            font.pixelSize: 9; font.family: root.appFont
+                                            font.pixelSize: 8; font.family: root.appFont
                                             color: root.textDim; width: parent.width - 2
                                             wrapMode: Text.WordWrap }
                                     }
@@ -249,8 +284,8 @@ Column {
 
             // ── Rate mode selector ────────────────────────────────────────────
             Column {
-                width: parent.width; spacing: 4
-                visible: adv.showVideoFields && adv.supportsVBR
+                width: parent.width; spacing: 3
+                visible: adv.showVideoFields && adv.supportsVBR && !adv.isGifTarget
 
                 Text { text: "RATE CONTROL"
                     font.pixelSize: 9; font.bold: true; font.family: root.appFont
@@ -266,7 +301,7 @@ Column {
                         ]
                         Rectangle {
                             property bool active: adv.rateMode === modelData.id
-                            width: rmLbl.implicitWidth + 20; height: 26; radius: 7
+                            width: rmLbl.implicitWidth + 18; height: 24; radius: 7
                             color: active ? "#1a2a1a" : (rmMa.containsMouse ? root.surfaceHi : root.surface)
                             border.color: active ? root.accent : root.border
                             border.width: active ? 1.5 : 1
@@ -297,10 +332,15 @@ Column {
             // ── Fields grid ───────────────────────────────────────────────────
             GridLayout {
                 width: parent.width
-                columns: 4; columnSpacing: 12; rowSpacing: 6
+                columns: 4; columnSpacing: 10; rowSpacing: 4
 
                 // Video Codec
-                ColumnLayout { spacing: 4; visible: adv.showVideoFields
+                ColumnLayout {
+                    spacing: 3
+                    visible: adv.showVideoFields && !adv.isGifTarget
+                    Layout.alignment: Qt.AlignTop
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
                     AdvFieldLabel { label: "Video Codec"
                         tip: "FFmpeg video encoder.\nCPU: libx264 (H.264), libx265 (H.265), libaom-av1 (AV1).\nGPU NVIDIA: h264_nvenc, hevc_nvenc.\nGPU Apple: h264_videotoolbox.\nLeave blank for format default." }
                     FieldDropdown { id: vcInput; hint: "libx264, hevc_nvenc"
@@ -309,7 +349,12 @@ Column {
                 }
 
                 // Audio Codec
-                ColumnLayout { spacing: 4; visible: adv.showAudioFields
+                ColumnLayout {
+                    spacing: 3
+                    visible: adv.showAudioFields && !adv.isGifTarget
+                    Layout.alignment: Qt.AlignTop
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
                     AdvFieldLabel { label: "Audio Codec"
                         tip: "FFmpeg audio encoder.\naac — best for MP4/MOV.\nlibopus — best for WebM/OGG.\nlibmp3lame — MP3.\nflac — lossless.\npcm_s16le — uncompressed WAV.\nLeave blank for format default." }
                     FieldDropdown { id: acInput; hint: "aac, libopus"
@@ -317,38 +362,53 @@ Column {
                         onValueChanged: adv.audioCodec = value }
                 }
 
-                // CRF (hidden when VBR selected)
-                ColumnLayout { spacing: 4
-                    visible: adv.showVideoFields && adv.rateMode === "crf"
-                    AdvFieldLabel { label: "CRF Quality"
-                        tip: "Constant Rate Factor.\nH.264: 18 = near-lossless, 23 = default, 28 = smaller.\nH.265: ~4 lower than H.264 for same quality (28 ≈ H.264 23).\nVP9: 0–63, default 31.\nAV1: 0–63, ~30 is balanced." }
-                    FieldDropdown { id: crfInput; hint: "23 (H.264 default)"
-                        options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
-                        onValueChanged: adv.crfValue = value }
-                }
+                // Rate primary (row 1, col 3) — strict grid cell
+                ColumnLayout {
+                    spacing: 3
+                    visible: adv.showVideoFields && !adv.isGifTarget
+                    Layout.alignment: Qt.AlignTop
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
 
-                // VBR Target Bitrate (hidden when CRF)
-                ColumnLayout { spacing: 4
-                    visible: adv.showVideoFields && adv.rateMode !== "crf"
-                    AdvFieldLabel { label: "Target Bitrate"
-                        tip: "VBR target video bitrate.\nEncoder averages near this value.\n4K → 15–40M, 1080p → 4–8M, 720p → 1.5–4M.\nUse 'k' for kbps or 'M' for Mbps." }
-                    FieldDropdown { id: vbTarget; hint: "4M, 8M"
-                        options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"]
-                        onValueChanged: adv.videoBitrate = value }
-                }
+                    AdvFieldLabel {
+                        label: adv.rateMode === "crf" ? "CRF Quality" : "Target Bitrate"
+                        tip: adv.rateMode === "crf"
+                             ? "Constant Rate Factor.\nH.264: 18 = near-lossless, 23 = default, 28 = smaller.\nH.265: ~4 lower than H.264 for same quality (28 ≈ H.264 23).\nVP9: 0–63, default 31.\nAV1: 0–63, ~30 is balanced."
+                             : "VBR target video bitrate.\nEncoder averages near this value.\n4K → 15–40M, 1080p → 4–8M, 720p → 1.5–4M.\nUse 'k' for kbps or 'M' for Mbps."
+                    }
 
-                // VBR Max Bitrate (hidden when CRF)
-                ColumnLayout { spacing: 4
-                    visible: adv.showVideoFields && adv.rateMode !== "crf"
-                    AdvFieldLabel { label: "Max Bitrate"
-                        tip: "VBR maximum bitrate cap.\nPrevents spikes in complex scenes.\nTypically 1.5–2× your target bitrate.\nLeave blank for no cap." }
-                    FieldDropdown { id: vbMax; hint: "leave blank or 2× target"
-                        options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"]
-                        onValueChanged: adv.videoMaxRate = value }
+                    Item {
+                        width: 170; height: 28
+                        FieldDropdown {
+                            id: crfInput
+                            anchors.fill: parent
+                            hint: "23 (H.264 default)"
+                            options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
+                            enabled: adv.rateMode === "crf"
+                            opacity: adv.rateMode === "crf" ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: adv.animMs + 10; easing.type: Easing.InOutCubic } }
+                            onValueChanged: adv.crfValue = value
+                        }
+                        FieldDropdown {
+                            id: vbTarget
+                            anchors.fill: parent
+                            hint: "4M, 8M"
+                            options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"]
+                            enabled: adv.rateMode !== "crf"
+                            opacity: adv.rateMode !== "crf" ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: adv.animMs + 10; easing.type: Easing.InOutCubic } }
+                            onValueChanged: adv.videoBitrate = value
+                        }
+                    }
                 }
 
                 // Audio Bitrate
-                ColumnLayout { spacing: 4; visible: adv.showAudioFields
+                ColumnLayout {
+                    spacing: 3
+                    visible: adv.showAudioFields && !adv.isGifTarget
+                    Layout.alignment: Qt.AlignTop
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
                     AdvFieldLabel { label: "Audio Bitrate"
                         tip: "Target audio bitrate.\n96k — voice.\n128k — acceptable.\n192k — good.\n320k — high quality.\nNot used for lossless (flac, pcm_*)." }
                     FieldDropdown { id: abInput; hint: "192k, 320k"
@@ -357,7 +417,12 @@ Column {
                 }
 
                 // Resolution
-                ColumnLayout { spacing: 4; visible: adv.showVideoFields
+                ColumnLayout {
+                    spacing: 3
+                    visible: adv.showVideoFields || adv.isGifTarget
+                    Layout.alignment: Qt.AlignTop
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
                     AdvFieldLabel { label: "Resolution"
                         tip: "Output resolution as WxH.\n3840x2160 (4K), 1920x1080, 1280x720, 854x480.\nLeave blank to keep source resolution." }
                     AdvTextInput { id: resInput; hint: "1920x1080"
@@ -365,15 +430,46 @@ Column {
                 }
 
                 // Framerate
-                ColumnLayout { spacing: 4; visible: adv.showVideoFields
+                ColumnLayout {
+                    spacing: 3
+                    visible: adv.showVideoFields || adv.isGifTarget
+                    Layout.alignment: Qt.AlignTop
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
                     AdvFieldLabel { label: "Framerate"
                         tip: "Output frames per second.\n24 (cinema), 25 (PAL), 30, 60 (gaming/sports).\nLeave blank to keep source framerate." }
                     AdvTextInput { id: fpsInput; hint: "24, 30, 60"
                         onTextChanged: adv.framerate = text }
                 }
 
-                // Force overwrite
-                ColumnLayout { spacing: 4
+                // Rate secondary (row 2, col 3) — keeps grid stable
+                ColumnLayout {
+                    spacing: 3
+                    visible: adv.showVideoFields && !adv.isGifTarget
+                    Layout.alignment: Qt.AlignTop
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
+
+                    AdvFieldLabel {
+                        label: "Max Bitrate"
+                        tip: "VBR maximum bitrate cap.\nPrevents spikes in complex scenes.\nTypically 1.5–2× your target bitrate.\nLeave blank for no cap."
+                        opacity: adv.rateMode !== "crf" ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: adv.animMs + 10; easing.type: Easing.InOutCubic } }
+                    }
+                    FieldDropdown {
+                        id: vbMax
+                        hint: "leave blank or 2× target"
+                        options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"]
+                        enabled: adv.rateMode !== "crf"
+                        opacity: adv.rateMode !== "crf" ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: adv.animMs + 10; easing.type: Easing.InOutCubic } }
+                        onValueChanged: adv.videoMaxRate = value
+                    }
+                }
+
+                ColumnLayout {
+                    spacing: 3
+                    Layout.alignment: Qt.AlignTop
                     Text { text: "Overwrite"; font.pixelSize: 10; font.family: root.appFont
                         color: root.textDim; font.letterSpacing: 0.5 }
                     Rectangle { width: 170; height: 28; radius: 7

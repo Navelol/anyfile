@@ -1175,7 +1175,7 @@ Item {
         clip: true
         padding: 14
         width: 420
-        height: contentItem.implicitHeight + padding * 2
+        height: contentItem.implicitHeight + padding * 2 + 16
 
         enter: Transition {
             ParallelAnimation {
