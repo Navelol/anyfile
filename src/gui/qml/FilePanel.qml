@@ -29,9 +29,11 @@ Item {
     property var _folderCategories: []
 
     // -- Folder mode state -----------------------------------------------------
-    property string folderPath:        ""
-    property string _lastScannedPath:  ""   // tracks which path rules/categories belong to
-    property var    folderFiles:       []
+    property string folderPath:         ""
+    property string _lastScannedPath:   ""    // tracks which path rules/categories belong to
+    property bool   _folderEverLoaded:  false // true once first scan completes for current path
+    property bool   _folderEverHad:     false // latches true the first time any folder is scanned; never resets
+    property var    folderFiles:        []
     property string folderOutDir:      ""
     property bool   folderSameDir:     true
     property bool   folderRecurse:     true
@@ -53,6 +55,8 @@ Item {
         function onFolderScanComplete(files, categories) {
             var isNewFolder = (panel.folderPath !== panel._lastScannedPath)
             panel._lastScannedPath     = panel.folderPath
+            panel._folderEverLoaded    = true
+            panel._folderEverHad       = true
             panel.folderFiles          = files
             panel._folderCategories    = categories
             if (isNewFolder) {
@@ -426,7 +430,11 @@ Item {
         var isNewFolder = (dir !== panel._lastScannedPath)
         panel.folderPath = dir
         if (isNewFolder) {
-            panel.folderFiles = []
+            // Only collapse layout on very first ever folder load; after that keep data visible
+            if (!panel._folderEverHad) {
+                panel._folderEverLoaded = false
+                panel.folderFiles = []
+            }
             panel._folderCategories = []
             panel._folderConvertCount = 0
             panel._folderCanConvert = false
@@ -1011,8 +1019,8 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.fillHeight: panel.folderPath === ""
-                Layout.preferredHeight: panel.folderPath !== "" ? 120 : -1
+                Layout.fillHeight: !panel._folderEverHad
+                Layout.preferredHeight: panel._folderEverHad ? 120 : -1
                 radius: 8
                 color: folderZoneMa.containsMouse ? root.surfaceHi : root.surface
                 border.color: panel.folderPath !== "" ? root.accent
@@ -1082,6 +1090,42 @@ Item {
                         Behavior on color { ColorAnimation { duration: 200 } }
                     }
                 }
+
+                // Initial-scan spinner — shown inside drop zone while loading first results
+                Item {
+                    anchors.bottom: parent.bottom
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottomMargin: 14
+                    width: 28; height: 28
+                    opacity: (bridge.scanning && !panel._folderEverLoaded) ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                    visible: opacity > 0
+
+                    Item {
+                        id: initScanSpinnerHub
+                        anchors.centerIn: parent
+                        width: 28; height: 28
+
+                        RotationAnimator {
+                            target: initScanSpinnerHub
+                            from: 0; to: 360; duration: 900
+                            loops: Animation.Infinite
+                            running: bridge.scanning && !panel._folderEverLoaded
+                            easing.type: Easing.Linear
+                        }
+
+                        Rectangle { width: 5; height: 5; radius: 2.5; color: root.accent; opacity: 1.0
+                            x: 11.5 + Math.cos(0)                * 10 - 2.5
+                            y: 11.5 + Math.sin(0)                * 10 - 2.5 }
+                        Rectangle { width: 5; height: 5; radius: 2.5; color: root.accent; opacity: 0.6
+                            x: 11.5 + Math.cos(Math.PI * 2 / 3)  * 10 - 2.5
+                            y: 11.5 + Math.sin(Math.PI * 2 / 3)  * 10 - 2.5 }
+                        Rectangle { width: 5; height: 5; radius: 2.5; color: root.accent; opacity: 0.25
+                            x: 11.5 + Math.cos(Math.PI * 4 / 3)  * 10 - 2.5
+                            y: 11.5 + Math.sin(Math.PI * 4 / 3)  * 10 - 2.5 }
+                    }
+                }
+
                 MouseArea {
                     id: folderZoneMa; anchors.fill: parent; hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor; onClicked: panel.openFolderPicker()
@@ -1089,7 +1133,7 @@ Item {
             }
 
             RowLayout {
-                visible: panel.folderPath !== ""
+                visible: panel._folderEverHad
                 Layout.fillWidth: true; spacing: 10
 
                 Rectangle {
@@ -1111,13 +1155,14 @@ Item {
                 }
 
                 Text {
-                    text: bridge.scanning ? "scanning..."
+                    text: panel.folderPath === "" ? ""
                           : (panel.folderFiles.length === 0 ? "no supported files found"
                           : (panel.folderFiles.length + " file"
                              + (panel.folderFiles.length === 1 ? "" : "s") + " found"))
                     font.pixelSize: 11; font.family: root.appFont
-                    color: bridge.scanning ? root.accent
-                           : (panel.folderFiles.length > 0 ? root.textMid : root.textDim)
+                    color: panel.folderFiles.length > 0 ? root.textMid : root.textDim
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                    opacity: bridge.scanning ? 0 : 1
                 }
                 Item { Layout.fillWidth: true }
 
@@ -1148,6 +1193,7 @@ Item {
                             panel._folderCanConvert = false
                             formatRulesModel.clear()
                             panel.folderDefaultExt = ""
+                            folderDropContent.playIn()
                         }
                     }
                 }
@@ -1155,7 +1201,7 @@ Item {
 
             // -- Format rules editor (when folder has files) ---------------------
             ColumnLayout {
-                visible: panel.folderPath !== "" && panel.folderFiles.length > 0
+                visible: panel._folderEverLoaded
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumHeight: 120
@@ -1164,6 +1210,8 @@ Item {
                 // Section header
                 RowLayout {
                     Layout.fillWidth: true; spacing: 8
+                    opacity: panel.folderFiles.length > 0 ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
                     Text { text: "conversion rules"; font.pixelSize: 10; font.bold: true
                         font.family: root.appFont; color: root.textDim }
                     Item { Layout.fillWidth: true }
@@ -1199,6 +1247,8 @@ Item {
                 // Existing rules list
                 Column {
                     Layout.fillWidth: true; spacing: 4
+                    opacity: panel.folderFiles.length > 0 ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
                     Repeater {
                         model: formatRulesModel
                         RowLayout {
@@ -1266,6 +1316,8 @@ Item {
                 // Default (catch-all) row
                 RowLayout {
                     Layout.fillWidth: true; spacing: 8
+                    opacity: panel.folderFiles.length > 0 ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
                     Text { text: "default:"; font.pixelSize: 10; font.bold: true
                         font.family: root.appFont; color: root.textDim }
                     Item {
@@ -1343,13 +1395,14 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 60
-                    visible: panel.folderFiles.length > 0
                     clip: true
 
                     AppScrollBar {
                         id: folderListSB
                         anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
                         width: 4; orientation: Qt.Vertical; flickable: folderPreviewList
+                        opacity: bridge.scanning ? 0 : 1
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
                     }
 
                     ListView {
@@ -1359,6 +1412,8 @@ Item {
                                   rightMargin: folderListSB.visible ? 4 : 0 }
                         model: panel.folderFiles.length
                         spacing: 2; clip: true
+                        opacity: bridge.scanning ? 0.25 : 1
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
 
                         delegate: RowLayout {
                             width: folderPreviewList.width; spacing: 8
@@ -1375,11 +1430,45 @@ Item {
                                 color: tgt !== "" ? root.accent : root.textDim }
                         }
                     }
+
+                    // Scanning overlay — spinner centred over the list
+                    Item {
+                        anchors.centerIn: parent
+                        width: 28; height: 28
+                        opacity: bridge.scanning ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                        visible: opacity > 0
+
+                        Item {
+                            id: scanSpinnerHub
+                            anchors.centerIn: parent
+                            width: 28; height: 28
+
+                            RotationAnimator {
+                                target: scanSpinnerHub
+                                from: 0; to: 360
+                                duration: 900
+                                loops: Animation.Infinite
+                                running: bridge.scanning
+                                easing.type: Easing.Linear
+                            }
+
+                            Rectangle { width: 5; height: 5; radius: 2.5; color: root.accent; opacity: 1.0
+                                x: 11.5 + Math.cos(0)                  * 10 - 2.5
+                                y: 11.5 + Math.sin(0)                  * 10 - 2.5 }
+                            Rectangle { width: 5; height: 5; radius: 2.5; color: root.accent; opacity: 0.6
+                                x: 11.5 + Math.cos(Math.PI * 2 / 3)    * 10 - 2.5
+                                y: 11.5 + Math.sin(Math.PI * 2 / 3)    * 10 - 2.5 }
+                            Rectangle { width: 5; height: 5; radius: 2.5; color: root.accent; opacity: 0.25
+                                x: 11.5 + Math.cos(Math.PI * 4 / 3)    * 10 - 2.5
+                                y: 11.5 + Math.sin(Math.PI * 4 / 3)    * 10 - 2.5 }
+                        }
+                    }
                 }
             }
 
             RowLayout {
-                visible: panel.folderPath !== ""
+                visible: panel._folderEverHad
                 Layout.fillWidth: true
                 Layout.minimumHeight: 36
                 spacing: 8
