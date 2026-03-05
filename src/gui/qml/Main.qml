@@ -125,10 +125,10 @@ ApplicationWindow {
             Column {
                 anchors.centerIn: parent
                 spacing: 12
-                Text {
+                TintedIcon {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "⬇"
-                    font.pixelSize: 52
+                    width: 56; height: 56
+                    source: "qrc:/icons/dropzone.svg"
                     color: root.accent
                 }
                 Text {

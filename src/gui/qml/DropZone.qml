@@ -8,7 +8,7 @@ Rectangle {
     property string fileName:        ""
     property string formatExt:       ""
     property string label:           "FILE"
-    property string placeholderIcon: "📂"
+    property string placeholderIcon: "qrc:/icons/dropzone.svg"
     property string placeholderText: "Drop or click"
 
     signal clicked()
@@ -48,9 +48,17 @@ Rectangle {
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: hasFile ? "✓" : zone.placeholderIcon
-            font.pixelSize: hasFile ? 28 : 36
-            color: hasFile ? root.success : root.textDim
+            visible: hasFile
+            text: "✓"
+            font.pixelSize: 28
+            color: root.success
+        }
+        TintedIcon {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: !hasFile
+            width: 40; height: 40
+            source: zone.placeholderIcon
+            color: root.textDim
         }
 
         Text {

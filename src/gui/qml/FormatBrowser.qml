@@ -98,7 +98,12 @@ Rectangle {
                         id: catRow
                         anchors.centerIn: parent
                         spacing: 7
-                        Text { text: modelData.icon; font.pixelSize: 15 }
+                        TintedIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 16; height: 16
+                            source: modelData.icon
+                            color: root.textMid
+                        }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: modelData.name.toLowerCase()

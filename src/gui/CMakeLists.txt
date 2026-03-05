@@ -35,6 +35,16 @@ qt_add_resources(anyfile_gui "gui_resources"
         resources/icons/minimize.svg
         resources/icons/expand.svg
         resources/icons/tooltip.svg
+        resources/icons/dropzone.svg
+        resources/icons/warning.svg
+        resources/icons/image.svg
+        resources/icons/video.svg
+        resources/icons/audio.svg
+        resources/icons/3D.svg
+        resources/icons/archive.svg
+        resources/icons/Data.svg
+        resources/icons/documents.svg
+        resources/icons/ebooks.svg
         resources/fonts/Manrope-Regular.ttf
 )
 

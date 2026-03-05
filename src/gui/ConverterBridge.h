@@ -286,14 +286,14 @@ public:
     Q_INVOKABLE QVariantList allFormatsGrouped() const {
         struct Group { QString name; QString icon; QStringList exts; };
         QList<Group> groups = {
-            { "Images",    "🖼",  {"png","jpg","webp","bmp","tiff","gif","heic","avif","exr","tga","svg","raw","cr2","nef","arw","dng"} },
-            { "Video",     "🎬",  {"mp4","mov","avi","mkv","webm","flv","wmv","ogv","ts","vob"} },
-            { "Audio",     "🎵",  {"mp3","wav","flac","aac","ogg","opus","m4a","wma","aiff","caf"} },
-            { "3D Models", "🧊",  {"fbx","obj","glb","gltf","stl","dae","ply","3ds","usd","usdz"} },
-            { "Archives",  "📦",  {"zip","tar","gz","bz2","xz","7z","rar","zst","tgz","tbz2","txz","lz4","lzma"} },
-            { "Data",      "📊",  {"json","xml","yaml","yml","csv","tsv","toml","ini","env"} },
-            { "Documents", "📄",  {"pdf","docx","doc","odt","rtf","xlsx","xls","ods","pptx","ppt","odp","txt","html","md","rst","tex"} },
-            { "Ebooks",    "📚",  {"epub","mobi","azw3","azw","fb2","djvu","lit"} },
+            { "Images",    "qrc:/icons/image.svg",     {"png","jpg","webp","bmp","tiff","gif","heic","avif","exr","tga","svg","raw","cr2","nef","arw","dng"} },
+            { "Video",     "qrc:/icons/video.svg",     {"mp4","mov","avi","mkv","webm","flv","wmv","ogv","ts","vob"} },
+            { "Audio",     "qrc:/icons/audio.svg",     {"mp3","wav","flac","aac","ogg","opus","m4a","wma","aiff","caf"} },
+            { "3D Models", "qrc:/icons/3D.svg",        {"fbx","obj","glb","gltf","stl","dae","ply","3ds","usd","usdz"} },
+            { "Archives",  "qrc:/icons/archive.svg",   {"zip","tar","gz","bz2","xz","7z","rar","zst","tgz","tbz2","txz","lz4","lzma"} },
+            { "Data",      "qrc:/icons/Data.svg",      {"json","xml","yaml","yml","csv","tsv","toml","ini","env"} },
+            { "Documents", "qrc:/icons/documents.svg", {"pdf","docx","doc","odt","rtf","xlsx","xls","ods","pptx","ppt","odp","txt","html","md","rst","tex"} },
+            { "Ebooks",    "qrc:/icons/ebooks.svg",    {"epub","mobi","azw3","azw","fb2","djvu","lit"} },
         };
 
         QVariantList result;

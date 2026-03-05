@@ -1187,6 +1187,8 @@ Item {
                         onClicked: {
                             panel.folderPath = ""
                             panel._lastScannedPath = ""
+                            panel._folderEverLoaded = false
+                            panel._folderEverHad = false
                             panel.folderFiles = []
                             panel._folderCategories = []
                             panel._folderConvertCount = 0
@@ -1489,17 +1491,28 @@ Item {
                 }
 
                 Rectangle {
-                    width: fcdLbl.implicitWidth + 20; height: 28; radius: 7
+                    id: fcdRect
+                    width: fcdInner.implicitWidth + 20; height: 28; radius: 7
                     color: !panel.folderSameDir ? root.accent : (fcdMa.containsMouse ? root.border : root.surface)
                     border.color: !panel.folderSameDir ? root.accent : root.border; border.width: 1
                     Behavior on color { ColorAnimation { duration: 100 } }
-                    Text {
-                        id: fcdLbl; anchors.centerIn: parent
-                        text: !panel.folderSameDir && panel.folderOutDir !== ""
-                              ? ("📁 " + panel.folderOutDir.split("/").pop())
-                              : "choose folder..."
-                        font.pixelSize: 11; font.family: root.appFont
-                        color: !panel.folderSameDir ? "#0e0e0f" : root.textMid
+                    Row {
+                        id: fcdInner; anchors.centerIn: parent; spacing: 5
+                        TintedIcon {
+                            visible: !panel.folderSameDir && panel.folderOutDir !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 13; height: 13
+                            source: "qrc:/icons/folder.svg"
+                            color: !panel.folderSameDir ? "#0e0e0f" : root.textMid
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: !panel.folderSameDir && panel.folderOutDir !== ""
+                                  ? panel.folderOutDir.split("/").pop()
+                                  : "choose folder..."
+                            font.pixelSize: 11; font.family: root.appFont
+                            color: !panel.folderSameDir ? "#0e0e0f" : root.textMid
+                        }
                     }
                     MouseArea { id: fcdMa; anchors.fill: parent; hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
@@ -2333,9 +2346,19 @@ Item {
                         }
                         visible: filtered.length > 0
 
-                        Text { text: modelData.icon + "  " + modelData.name
-                            font.pixelSize: 10; font.bold: true; font.family: root.appFont
-                            color: root.textDim; leftPadding: 2 }
+                        Row {
+                            spacing: 5; leftPadding: 2
+                            TintedIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 12; height: 12
+                                source: modelData.icon
+                                color: root.textDim
+                            }
+                            Text { anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.name
+                                font.pixelSize: 10; font.bold: true; font.family: root.appFont
+                                color: root.textDim }
+                        }
                         Flow {
                             width: parent.width; spacing: 4
                             Repeater {
@@ -2401,13 +2424,23 @@ Item {
                 width: parent.width
                 height: 54
                 color: "transparent"
-                Text {
+                Row {
                     anchors.centerIn: parent
-                    text: "⚠️  Large Folder Detected"
-                    font.pixelSize: 14
-                    font.bold: true
-                    font.family: root.appFont
-                    color: root.textPrim
+                    spacing: 8
+                    TintedIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 16; height: 16
+                        source: "qrc:/icons/warning.svg"
+                        color: root.warnClr
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Large Folder Detected"
+                        font.pixelSize: 14
+                        font.bold: true
+                        font.family: root.appFont
+                        color: root.textPrim
+                    }
                 }
             }
             
