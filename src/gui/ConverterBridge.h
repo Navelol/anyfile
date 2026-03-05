@@ -640,6 +640,36 @@ public:
         return result;
     }
 
+    // Variant that mirrors convertBatchDetailed and respects per-file outputName
+    Q_INVOKABLE QStringList wouldOverwriteDetailed(
+        const QVariantList& jobSpecs,
+        const QString& outputDir) const
+    {
+        QStringList result;
+        for (const QVariant& v : jobSpecs) {
+            QVariantMap spec = v.toMap();
+            const QString inPath  = spec.value("path").toString();
+            const QString tgtExt  = spec.value("ext").toString();
+            const QString outName = spec.value("outputName").toString();
+            if (inPath.isEmpty() || tgtExt.isEmpty())
+                continue;
+
+            fs::path inp(inPath.toStdString());
+            fs::path outDirPath = outputDir.isEmpty()
+                ? inp.parent_path()
+                : fs::path(outputDir.toStdString());
+
+            std::string stem = outName.isEmpty()
+                ? inp.stem().string()
+                : outName.toStdString();
+
+            fs::path out = outDirPath / (stem + "." + tgtExt.toStdString());
+            if (fs::exists(out))
+                result << QString::fromStdString(out.string());
+        }
+        return result;
+    }
+
     // ── Batch convert a list of files with per-file target extensions ──────────
     Q_INVOKABLE void convertBatch(
         const QStringList& inputPaths,

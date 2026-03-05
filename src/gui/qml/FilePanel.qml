@@ -286,10 +286,7 @@ Item {
             var specs = buildFilesJobSpecs()
             if (specs.length === 0) return
             if (!advPanel.forceOverwrite) {
-                // build paths/exts for collision check
-                var ps = [], xs = []
-                for (var k = 0; k < specs.length; k++) { ps.push(specs[k].path); xs.push(specs[k].ext) }
-                var collisions = bridge.wouldOverwrite(ps, xs, "")
+                var collisions = bridge.wouldOverwriteDetailed(specs, "")
                 if (collisions.length > 0) {
                     overwriteDialog.setup(collisions, specs, "", opts)
                     overwriteDialog.open(); return
@@ -302,9 +299,7 @@ Item {
             if (fSpecs.length === 0) return
             var outDir = folderSameDir ? "" : folderOutDir
             if (!advPanel.forceOverwrite) {
-                var fps = [], fxs = []
-                for (var m = 0; m < fSpecs.length; m++) { fps.push(fSpecs[m].path); fxs.push(fSpecs[m].ext) }
-                var fc = bridge.wouldOverwrite(fps, fxs, outDir)
+                var fc = bridge.wouldOverwriteDetailed(fSpecs, outDir)
                 if (fc.length > 0) {
                     overwriteDialog.setup(fc, fSpecs, outDir, opts)
                     overwriteDialog.open(); return
@@ -829,14 +824,37 @@ Item {
                             }
 
                             Text {
-                                Layout.fillWidth: true
                                 text: "file"
                                 font.pixelSize: 10; font.family: root.appFont
                                 color: root.textDim; font.bold: true
                             }
 
-                            // Spacer to align with source badge + arrow + target
-                            Item { width: 1; height: 1 }
+                            Item { Layout.fillWidth: true }
+
+                            // Clear all files (sits above per-row close buttons)
+                            Rectangle {
+                                width: fileClrLbl.implicitWidth + 16; height: 24; radius: 7
+                                color: fileClrMa.containsMouse ? root.surfaceHi : "transparent"
+                                border.color: root.border; border.width: 1
+                                Text {
+                                    id: fileClrLbl
+                                    anchors.centerIn: parent
+                                    text: "clear"
+                                    font.pixelSize: 10
+                                    font.family: root.appFont
+                                    color: root.textDim
+                                }
+                                MouseArea {
+                                    id: fileClrMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        batchModel.clear()
+                                        panel.overrideExt = ""
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -1094,6 +1112,34 @@ Item {
                            : (panel.folderFiles.length > 0 ? root.textMid : root.textDim)
                 }
                 Item { Layout.fillWidth: true }
+
+                // Clear folder selection
+                Rectangle {
+                    width: folderClrLbl.implicitWidth + 16; height: 28; radius: 7
+                    color: folderClrMa.containsMouse ? root.surfaceHi : root.surface
+                    border.color: root.border; border.width: 1
+                    Text {
+                        id: folderClrLbl
+                        anchors.centerIn: parent
+                        text: "clear"
+                        font.pixelSize: 11
+                        font.family: root.appFont
+                        color: root.textDim
+                    }
+                    MouseArea {
+                        id: folderClrMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            panel.folderPath = ""
+                            panel.folderFiles = []
+                            panel._folderCategories = []
+                            panel._folderConvertCount = 0
+                            panel._folderCanConvert = false
+                        }
+                    }
+                }
             }
 
             // -- Format rules editor (when folder has files) ---------------------
@@ -1181,7 +1227,7 @@ Item {
                                         addRulePopup.arRateMode = model.ovRateMode || "crf"
                                         arVideoInput.setValue(model.ovVideoCodec || "")
                                         arAudioInput.setValue(model.ovAudioCodec || "")
-                                        arCrfInput.setValue(model.ovCrf >= 0 ? model.ovCrf.toString() : "")
+                                        arCrfInput.text = model.ovCrf >= 0 ? model.ovCrf.toString() : ""
                                         arVbTargetInput.setValue(model.ovVideoBitrate || "")
                                         arVbMaxInput.setValue(model.ovVideoMaxRate || "")
                                         arAudioBitrateInput.setValue(model.ovAudioBitrate || "")
@@ -1413,7 +1459,7 @@ Item {
             batchModel.setProperty(idx, "ovVideoBitrate", pfVideoBitrateInput.value)
             batchModel.setProperty(idx, "ovVideoMaxRate", pfVideoMaxRateInput.value)
             batchModel.setProperty(idx, "ovAudioBitrate", pfAudioBitrateInput.value)
-            batchModel.setProperty(idx, "ovCrf", pfRateMode === "crf" && pfCrfInput.value.length > 0 ? parseInt(pfCrfInput.value) : -1)
+            batchModel.setProperty(idx, "ovCrf", pfRateMode === "crf" && pfCrfInput.text.length > 0 ? parseInt(pfCrfInput.text) : -1)
             batchModel.setProperty(idx, "ovResolution",   pfResolutionInput.text)
             batchModel.setProperty(idx, "ovFramerate",    pfFramerateInput.text)
         }
@@ -1441,7 +1487,7 @@ Item {
             pfVideoBitrateInput.setValue(item.ovVideoBitrate)
             pfVideoMaxRateInput.setValue(item.ovVideoMaxRate || "")
             pfAudioBitrateInput.setValue(item.ovAudioBitrate)
-            pfCrfInput.setValue(item.ovCrf >= 0 ? item.ovCrf.toString() : "")
+            pfCrfInput.text = item.ovCrf >= 0 ? item.ovCrf.toString() : ""
             pfResolutionInput.text = item.ovResolution || ""
             pfFramerateInput.text = item.ovFramerate || ""
             var pos = anchor.mapToItem(panel, 0, anchor.height + 4)
@@ -1561,13 +1607,35 @@ Item {
                             text: "CRF"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim
                             Layout.preferredWidth: Math.max(pfLabelWidthRef.implicitWidth, implicitWidth)
                         }
-                        FieldDropdown {
-                            id: pfCrfInput
+                        Rectangle {
                             Layout.preferredHeight: 28
                             Layout.fillWidth: true
-                            hint: "global default"
-                            onValueChanged: perFilePopup.syncRowOverrides()
-                            options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
+                            radius: 6
+                            color: root.surface
+                            border.color: pfCrfInput.activeFocus ? root.accent : root.border
+                            border.width: 1
+                            clip: true
+                            TextInput {
+                                id: pfCrfInput
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                font.pixelSize: 11
+                                font.family: root.appFont
+                                color: root.textPrim
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                validator: IntValidator { bottom: 0; top: 51 }
+                                onTextEdited: perFilePopup.scheduleSync()
+                                onEditingFinished: perFilePopup.syncRowOverrides()
+                                Text {
+                                    visible: !parent.text.length
+                                    anchors.fill: parent
+                                    text: "global default"
+                                    font.pixelSize: 11
+                                    font.family: root.appFont
+                                    color: root.textDim
+                                    elide: Text.ElideRight
+                                }
+                            }
                         }
                     }
 
@@ -1697,7 +1765,7 @@ Item {
                             pfVideoBitrateInput.setValue("")
                             pfVideoMaxRateInput.setValue("")
                             pfAudioBitrateInput.setValue("")
-                            pfCrfInput.setValue("")
+                            pfCrfInput.text = ""
                             pfResolutionInput.text = ""
                             pfFramerateInput.text = ""
                             perFilePopup.syncRowOverrides()
@@ -1877,9 +1945,9 @@ Item {
                             onClicked: {
                                 addRulePopup.arRateMode = modelData.id
                                 if (modelData.id === "crf") {
-                                    arVbTargetInput.setValue(""); arVbMaxInput.setValue("")
+                                        arVbTargetInput.setValue(""); arVbMaxInput.setValue("")
                                 } else {
-                                    arCrfInput.setValue("")
+                                        arCrfInput.text = ""
                                 }
                             }
                         }
@@ -1927,9 +1995,34 @@ Item {
                         Behavior on opacity { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
                         Behavior on y      { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
                         Text { text: "crf"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                        FieldDropdown { id: arCrfInput; width: parent.width; height: 28
-                            hint: "global default"
-                            options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"] }
+                        Rectangle {
+                            width: parent.width
+                            height: 28
+                            radius: 6
+                            color: root.surface
+                            border.color: arCrfInput.activeFocus ? root.accent : root.border
+                            border.width: 1
+                            clip: true
+                            TextInput {
+                                id: arCrfInput
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                font.pixelSize: 11
+                                font.family: root.appFont
+                                color: root.textPrim
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                validator: IntValidator { bottom: 0; top: 51 }
+                                Text {
+                                    visible: !parent.text.length
+                                    anchors.fill: parent
+                                    text: "global default"
+                                    font.pixelSize: 11
+                                    font.family: root.appFont
+                                    color: root.textDim
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
                     }
                     // VBR panel — label above, full-width dropdowns
                     Column {
@@ -2029,7 +2122,7 @@ Item {
                             for (var i = formatRulesModel.count - 1; i >= 0; i--)
                                 if (formatRulesModel.get(i).fromExt === from) formatRulesModel.remove(i)
                             // Build encoding fields
-                            var crf = (addRulePopup.arRateMode === "crf" && arCrfInput.value !== "") ? parseInt(arCrfInput.value) : -1
+                            var crf = (addRulePopup.arRateMode === "crf" && arCrfInput.text !== "") ? parseInt(arCrfInput.text) : -1
                             formatRulesModel.append({
                                 fromExt: from, toExt: to,
                                 ovVideoCodec:   arVideoInput.value,

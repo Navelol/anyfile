@@ -68,7 +68,7 @@ Column {
             abInput.setValue("")
             vbTarget.setValue("")
             vbMax.setValue("")
-            crfInput.setValue("")
+            crfInput.text = ""
         }
         advBody.opacity = 0.0
         advBodyFadeIn.restart()
@@ -95,12 +95,12 @@ Column {
             crfValue     = ""
             vbTarget.setValue(videoBitrate)
             vbMax.setValue(videoMaxRate)
-            crfInput.setValue("")
+            crfInput.text = ""
         } else {
             rateMode     = "crf"
             crfValue     = (p.crf !== undefined && p.crf !== "") ? String(p.crf) : ""
             videoBitrate = ""; videoMaxRate = ""
-            crfInput.setValue(crfValue)
+            crfInput.text = crfValue
             vbTarget.setValue(""); vbMax.setValue("")
         }
     }
@@ -189,19 +189,6 @@ Column {
                                                   ? root.accent : root.border
                                     Behavior on color        { ColorAnimation { duration: 80 } }
                                     Behavior on border.color { ColorAnimation { duration: 80 } }
-
-                                    // VBR badge
-                                    Rectangle {
-                                        visible: modelData.rateMode === "vbr1" || modelData.rateMode === "vbr2"
-                                        anchors.top: parent.top; anchors.right: parent.right
-                                        anchors.topMargin: 5; anchors.rightMargin: 5
-                                        width: badgeLbl.implicitWidth + 8; height: 14; radius: 3
-                                        color: "#0e1e2e"; border.color: "#4488bb"; border.width: 1
-                                        Text { id: badgeLbl; anchors.centerIn: parent
-                                            text: modelData.rateMode === "vbr2" ? "VBR 2-pass" : "VBR"
-                                            font.pixelSize: 8; font.family: root.appFont
-                                            font.bold: true; color: "#88ccee" }
-                                    }
 
                                     Column {
                                         anchors { left: parent.left; right: parent.right
@@ -312,7 +299,7 @@ Column {
                                         adv.videoBitrate = ""; adv.videoMaxRate = ""
                                         vbTarget.setValue(""); vbMax.setValue("")
                                     } else {
-                                        adv.crfValue = ""; crfInput.setValue("")
+                                        adv.crfValue = ""; crfInput.text = ""
                                     }
                                 }
                             }
@@ -371,15 +358,16 @@ Column {
 
                     Item {
                         width: 170; height: 28
-                        FieldDropdown {
+                        AdvTextInput {
                             id: crfInput
                             anchors.fill: parent
                             hint: "23 (H.264 default)"
-                            options: ["16","17","18","19","20","21","22","23","24","26","28","30","31","35","40"]
+                            inputHints: Qt.ImhDigitsOnly
+                            validator: IntValidator { bottom: 0; top: 51 }
                             enabled: adv.rateMode === "crf"
                             opacity: adv.rateMode === "crf" ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: adv.animMs + 10; easing.type: Easing.InOutCubic } }
-                            onValueChanged: adv.crfValue = value
+                            onTextChanged: adv.crfValue = text
                         }
                         FieldDropdown {
                             id: vbTarget
@@ -502,13 +490,29 @@ Column {
     }
 
     component AdvTextInput: Rectangle {
+        id: advInputRoot
         property alias text: ti.text
         property string hint: ""
+        property var validator: null
+        property int inputHints: 0
         width: 170; height: 28; radius: 7; color: root.surfaceHi
         border.color: ti.activeFocus ? root.accent : root.border; border.width: 1
-        TextInput { id: ti; anchors.fill: parent; anchors.margins: 6
-            font.pixelSize: 12; font.family: root.appFont; color: root.textPrim
-            Text { anchors.fill: parent; text: parent.parent.hint; font: parent.font
-                color: root.textDim; visible: parent.text.length === 0 && !parent.activeFocus } }
+        TextInput {
+            id: ti
+            anchors.fill: parent
+            anchors.margins: 6
+            font.pixelSize: 12
+            font.family: root.appFont
+            color: root.textPrim
+            inputMethodHints: advInputRoot.inputHints
+            validator: advInputRoot.validator
+            Text {
+                anchors.fill: parent
+                text: advInputRoot.hint
+                font: parent.font
+                color: root.textDim
+                visible: parent.text.length === 0 && !parent.activeFocus
+            }
+        }
     }
 }
