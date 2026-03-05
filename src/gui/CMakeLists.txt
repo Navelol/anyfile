@@ -66,6 +66,7 @@ qt_add_qml_module(anyfile_gui
         qml/ProgressBar2.qml
         qml/FieldDropdown.qml
         qml/TintedIcon.qml
+        qml/ToolTip.qml
     SOURCES
         ConverterBridge.h
 )

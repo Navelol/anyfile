@@ -3,10 +3,12 @@
 #include <QQmlContext>
 #include <QIcon>
 #include <QtQml>
+#include <QQuickStyle>
 
 #include "ConverterBridge.h"
 
 int main(int argc, char* argv[]) {
+    QQuickStyle::setStyle("Basic");
     QApplication app(argc, argv);
     app.setApplicationName("Anyfile");
     app.setApplicationVersion("0.1");

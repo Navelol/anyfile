@@ -82,12 +82,15 @@ Item {
             property real _startMouse: 0
             property real _startPos:   0
             onPressed: function(mouse) {
-                _startMouse = sb.horizontal ? mouse.x : mouse.y
+                // Map to sb (track) coordinates so origin doesn't drift as thumb moves
+                var pt = mapToItem(sb, mouse.x, mouse.y)
+                _startMouse = sb.horizontal ? pt.x : pt.y
                 _startPos   = sb.position
             }
             onPositionChanged: function(mouse) {
                 if (!pressed) return
-                var curMouse = sb.horizontal ? mouse.x : mouse.y
+                var pt       = mapToItem(sb, mouse.x, mouse.y)
+                var curMouse = sb.horizontal ? pt.x : pt.y
                 var ratio    = sb.scrollRange / (sb.trackLen - sb.thumbLen)
                 var newPos   = Math.max(0, Math.min(sb.scrollRange, _startPos + (curMouse - _startMouse) * ratio))
                 if (sb.flickable) {

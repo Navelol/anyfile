@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Window
 
 // Pure click-only dropdown selector — no free-text input.
 // Usage:
@@ -16,9 +15,12 @@ Rectangle {
 
     function setValue(v) { value = v }
 
+    // Close when this item is hidden or destroyed
+    onVisibleChanged: if (!visible) _popup.close()
+
     width: 170; height: 28; radius: 7
     color: btnMa.containsMouse ? root.border : root.surfaceHi
-    border.color: (optPop.visible || btnMa.containsMouse) ? root.accent : root.border
+    border.color: (_popup.opened || btnMa.containsMouse) ? root.accent : root.border
     border.width: 1
     Behavior on color { ColorAnimation { duration: 80 } }
 
@@ -39,7 +41,7 @@ Rectangle {
         Text {
             id: arrowLbl
             anchors.verticalCenter: parent.verticalCenter
-            text: optPop.visible ? "\u25b4" : "\u25be"
+            text: _popup.opened ? "\u25b4" : "\u25be"
             font.pixelSize: 9; color: root.textDim
         }
     }
@@ -47,40 +49,48 @@ Rectangle {
     MouseArea {
         id: btnMa; anchors.fill: parent
         hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-        onClicked: optPop.visible ? optPop.close() : optPop.open()
+        onClicked: _popup.opened ? _popup.close() : _popup.open()
     }
 
     Popup {
-        id: optPop
-        y: fd.height + 2   // adjusted in onAboutToShow
-        width: Math.max(fd.width, 160)
-        padding: 0
-        modal: false
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-
-        onAboutToShow: {
-            var rows = fd.options.length + 1
-            var contentH = rows * 26 + 8  // 4px top+bottom insets in Column
+        id: _popup
+        // Position below (or above) the trigger rectangle
+        y: {
             var sceneY = fd.mapToItem(null, 0, 0).y
-            y = (sceneY + fd.height + 2 + contentH > fd.Window.height)
-                ? -(contentH + 2) : fd.height + 2
+            var contentH = (fd.options.length + 1) * 26 + 10
+            var openAbove = (sceneY + fd.height + 2 + contentH > fd.Window.height)
+            return openAbove ? -(contentH + 2) : fd.height + 2
         }
+        x: 0
+        width: Math.max(fd.width, 160)
+        height: contentCol.implicitHeight + 10
+        padding: 0
+        margins: 0
 
         background: Rectangle {
-            color: root.surfaceHi; radius: 7
-            border.color: root.accent; border.width: 1
+            radius: 7
+            color: root.surfaceHi
+            border.color: root.accent
+            border.width: 1
         }
 
-        contentItem: Column {
+        // No background dim / overlay from Controls
+        dim: false
+
+        enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 100; easing.type: Easing.OutCubic } }
+        exit:  Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 80;  easing.type: Easing.InCubic  } }
+
+        Column {
+            id: contentCol
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            anchors.topMargin: 5
             spacing: 0
-            topPadding: 5; bottomPadding: 5
-            leftPadding: 1; rightPadding: 1
 
             // "none / clear" row
             Rectangle {
-                width: optPop.width - 2; height: 26
+                width: parent.width; height: 26; radius: 4
                 color: clearMa.containsMouse ? root.border : "transparent"
-                Behavior on color { ColorAnimation { duration: 60 } }
+                Behavior on color { ColorAnimation { duration: 120 } }
                 Row {
                     anchors.fill: parent; anchors.leftMargin: 8
                     spacing: 6
@@ -104,23 +114,22 @@ Rectangle {
                 MouseArea {
                     id: clearMa; anchors.fill: parent; hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { fd.value = ""; optPop.close() }
+                    onClicked: { fd.value = ""; _popup.close() }
                 }
             }
 
             Repeater {
                 model: fd.options
                 Rectangle {
-                    width: optPop.width - 2; height: 26
+                    width: parent.width; height: 26; radius: 4
                     color: optMa.containsMouse ? root.border : "transparent"
-                    Behavior on color { ColorAnimation { duration: 60 } }
+                    Behavior on color { ColorAnimation { duration: 120 } }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         anchors.left: parent.left; anchors.leftMargin: 8
                         text: modelData; font.pixelSize: 11; font.family: root.appFont
                         color: root.textPrim
                     }
-                    // Active indicator dot
                     Rectangle {
                         visible: fd.value === modelData
                         anchors.right: parent.right; anchors.rightMargin: 8
@@ -130,7 +139,7 @@ Rectangle {
                     MouseArea {
                         id: optMa; anchors.fill: parent; hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { fd.value = modelData; optPop.close() }
+                        onClicked: { fd.value = modelData; _popup.close() }
                     }
                 }
             }

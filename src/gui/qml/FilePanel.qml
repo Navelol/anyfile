@@ -2127,72 +2127,63 @@ Item {
                     }
                 }
 
-                Item {
+                // Rate encoding fields — CRF and VBR rows share one GridLayout so inputs align
+                GridLayout {
+                    id: arRatePanel
                     visible: addRulePopup.arShowVideo; Layout.columnSpan: 2
-                    Layout.fillWidth: true; clip: true
-                    Layout.preferredHeight: visible
-                        ? (addRulePopup.arRateMode === "crf" ? arRateCrfPanel.implicitHeight : arRateVbrPanel.implicitHeight)
-                        : 0
-                    Behavior on Layout.preferredHeight { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutCubic } }
+                    Layout.fillWidth: true
+                    columns: 2; columnSpacing: 10; rowSpacing: 8
 
-                    // CRF panel — label above, full-width dropdown (matches audio codec style)
-                    Column {
-                        id: arRateCrfPanel
-                        anchors { left: parent.left; right: parent.right; top: parent.top }
-                        spacing: 4
-                        opacity: addRulePopup.arRateMode === "crf" ? 1 : 0
-                        enabled: addRulePopup.arRateMode === "crf"
-                        y: addRulePopup.arRateMode === "crf" ? 0 : 6
-                        Behavior on opacity { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
-                        Behavior on y      { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
-                        Text { text: "crf"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                        Rectangle {
-                            width: parent.width
-                            height: 28
-                            radius: 6
-                            color: root.surface
-                            border.color: arCrfInput.activeFocus ? root.accent : root.border
-                            border.width: 1
-                            clip: true
-                            TextInput {
-                                id: arCrfInput
-                                anchors.fill: parent
-                                anchors.margins: 6
-                                font.pixelSize: 11
-                                font.family: root.appFont
-                                color: root.textPrim
-                                inputMethodHints: Qt.ImhDigitsOnly
-                                validator: IntValidator { bottom: 0; top: 51 }
-                                Text {
-                                    visible: !parent.text.length
-                                    anchors.fill: parent
-                                    text: "global default"
-                                    font.pixelSize: 11
-                                    font.family: root.appFont
-                                    color: root.textDim
-                                    elide: Text.ElideRight
-                                }
-                            }
+                    // CRF row
+                    Text {
+                        text: "crf"
+                        font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: addRulePopup.arRateMode === "crf"
+                        Layout.preferredHeight: visible ? implicitHeight : 0
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; Layout.preferredHeight: 28
+                        radius: 6; color: root.surface
+                        border.color: arCrfInput.activeFocus ? root.accent : root.border; border.width: 1; clip: true
+                        visible: addRulePopup.arRateMode === "crf"
+                        TextInput {
+                            id: arCrfInput
+                            anchors.fill: parent; anchors.margins: 6
+                            font.pixelSize: 11; font.family: root.appFont; color: root.textPrim
+                            inputMethodHints: Qt.ImhDigitsOnly
+                            validator: IntValidator { bottom: 0; top: 51 }
+                            Text { visible: !parent.text.length; anchors.fill: parent; text: "global default"
+                                font.pixelSize: 11; font.family: root.appFont; color: root.textDim; elide: Text.ElideRight }
                         }
                     }
-                    // VBR panel — label above, full-width dropdowns
-                    Column {
-                        id: arRateVbrPanel
-                        anchors { left: parent.left; right: parent.right; top: parent.top }
-                        spacing: 4
-                        opacity: addRulePopup.arRateMode !== "crf" ? 1 : 0
-                        enabled: addRulePopup.arRateMode !== "crf"
-                        y: addRulePopup.arRateMode !== "crf" ? 0 : 6
-                        Behavior on opacity { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
-                        Behavior on y      { NumberAnimation { duration: addRulePopup.animMs; easing.type: Easing.InOutQuad } }
-                        Text { text: "target bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                        FieldDropdown { id: arVbTargetInput; width: parent.width; height: 28
-                            hint: "4M, 8M"
-                            options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"] }
-                        Text { text: "max bitrate"; font.pixelSize: 10; font.family: root.appFont; color: root.textDim }
-                        FieldDropdown { id: arVbMaxInput; width: parent.width; height: 28
-                            hint: "leave blank or 2× target"
-                            options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"] }
+
+                    // VBR rows
+                    Text {
+                        text: "target bitrate"
+                        font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: addRulePopup.arRateMode !== "crf"
+                        Layout.preferredHeight: visible ? implicitHeight : 0
+                    }
+                    FieldDropdown {
+                        id: arVbTargetInput; Layout.fillWidth: true; Layout.preferredHeight: 28
+                        hint: "4M, 8M"
+                        options: ["500k","1M","2M","3M","4M","6M","8M","12M","15M","20M","30M","40M"]
+                        visible: addRulePopup.arRateMode !== "crf"
+                    }
+                    Text {
+                        text: "max bitrate"
+                        font.pixelSize: 10; font.family: root.appFont; color: root.textDim
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: addRulePopup.arRateMode !== "crf"
+                        Layout.preferredHeight: visible ? implicitHeight : 0
+                    }
+                    FieldDropdown {
+                        id: arVbMaxInput; Layout.fillWidth: true; Layout.preferredHeight: 28
+                        hint: "leave blank or 2× target"
+                        options: ["","1M","2M","4M","6M","8M","12M","16M","20M","30M","50M","60M"]
+                        visible: addRulePopup.arRateMode !== "crf"
                     }
                 }
 
