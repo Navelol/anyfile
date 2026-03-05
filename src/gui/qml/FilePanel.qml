@@ -16,19 +16,17 @@ Item {
     property string overrideExt: ""   // if set, all enabled rows use this ext
 
     // Categories present in current batch/folder (drives Global Advanced Options visibility)
+    // In file mode: computed from batch model. In folder mode: set once by scan worker.
     property var presentCategories: {
-        var cats = {}
         if (mode === 0) {
+            var cats = {}
             for (var i = 0; i < batchModel.count; i++)
                 cats[bridge.categoryFor(batchModel.get(i).sourceExt)] = true
-        } else {
-            for (var j = 0; j < folderFiles.length; j++) {
-                var ext = bridge.detectFormat(folderFiles[j])
-                if (ext !== "") cats[bridge.categoryFor(ext)] = true
-            }
+            return Object.keys(cats)
         }
-        return Object.keys(cats)
+        return panel._folderCategories
     }
+    property var _folderCategories: []
 
     // -- Folder mode state -----------------------------------------------------
     property string folderPath:    ""
@@ -40,6 +38,7 @@ Item {
     // Folder format rules: [{fromExt, toExt}] + a default catch-all
     ListModel { id: formatRulesModel }
     property string folderDefaultExt: ""
+    onFolderDefaultExtChanged: recomputeFolderStats()
 
     // -- Results model (shared batch + folder) ---------------------------------
     ListModel { id: batchResults }
@@ -50,6 +49,32 @@ Item {
             batchResults.append({ filename: filename, success: success, detail: detail })
             if (batchList.count > 0) batchList.positionViewAtEnd()
         }
+        function onFolderScanComplete(files, categories) {
+            panel.folderFiles          = files
+            panel._folderCategories    = categories
+            panel.folderDefaultExt     = ""
+            formatRulesModel.clear()
+            panel.recomputeFolderStats()
+            if (files.length >= 100000) scanLimitDialog.open()
+        }
+    }
+
+    // Cached folder stats (computed once, updated when rules change)
+    property int  _folderConvertCount: 0
+    property bool _folderCanConvert:   false
+
+    function recomputeFolderStats() {
+        if (panel.mode !== 1 || panel.folderFiles.length === 0) {
+            panel._folderConvertCount = 0
+            panel._folderCanConvert   = false
+            return
+        }
+        var rules = []
+        for (var i = 0; i < formatRulesModel.count; i++)
+            rules.push(formatRulesModel.get(i))
+        var stats = bridge.computeFolderStats(panel.folderFiles, rules, panel.folderDefaultExt)
+        panel._folderConvertCount = stats.convertCount
+        panel._folderCanConvert   = stats.canConvert
     }
 
     // -- Helpers ---------------------------------------------------------------
@@ -67,6 +92,15 @@ Item {
         // Reset global override if this file can't convert to it
         if (panel.overrideExt !== "" && fmts.indexOf(panel.overrideExt) < 0)
             panel.overrideExt = ""
+    }
+
+    function hasOverrides(index) {
+        var item = batchModel.get(index)
+        if (!item) return false
+        return item.outputName !== "" || item.ovVideoCodec !== "" ||
+               item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" ||
+               item.ovVideoMaxRate !== "" || item.ovAudioBitrate !== "" ||
+               item.ovCrf >= 0 || item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2"
     }
 
     function effectiveTarget(index) {
@@ -124,7 +158,7 @@ Item {
     // Resolve target ext for a folder file using rules then default,
     // but only return it if the file can actually be converted to that ext.
     function resolveTargetForFolder(filePath) {
-        var src = bridge.detectFormat(filePath)
+        var src = bridge.cachedDetectFormat(filePath)
         var tgt = ""
         for (var i = 0; i < formatRulesModel.count; i++) {
             if (formatRulesModel.get(i).fromExt === src) {
@@ -134,8 +168,7 @@ Item {
         }
         if (tgt === "") tgt = panel.folderDefaultExt
         if (tgt === "") return ""
-        // Verify the file can actually convert to this target
-        var fmts = bridge.formatsFor(filePath)
+        var fmts = bridge.cachedFormatsFor(filePath)
         if (fmts.indexOf(tgt) < 0) return ""
         return tgt
     }
@@ -145,7 +178,7 @@ Item {
         var specs = []
         for (var i = 0; i < folderFiles.length; i++) {
             var fp  = folderFiles[i]
-            var src = bridge.detectFormat(fp)
+            var src = bridge.cachedDetectFormat(fp)
             var tgt = ""
             var ruleIdx = -1
             for (var r = 0; r < formatRulesModel.count; r++) {
@@ -153,7 +186,7 @@ Item {
             }
             if (tgt === "") tgt = folderDefaultExt
             if (tgt === "") continue
-            var fmts = bridge.formatsFor(fp)
+            var fmts = bridge.cachedFormatsFor(fp)
             if (fmts.indexOf(tgt) < 0) continue
             var spec = { path: fp, ext: tgt }
             if (ruleIdx >= 0) {
@@ -180,7 +213,7 @@ Item {
     function sourcesInFolder() {
         var seen = {}, result = []
         for (var i = 0; i < folderFiles.length; i++) {
-            var ext = bridge.detectFormat(folderFiles[i])
+            var ext = bridge.cachedDetectFormat(folderFiles[i])
             if (ext !== "" && !seen[ext]) { seen[ext] = true; result.push(ext) }
         }
         return result.sort()
@@ -226,7 +259,7 @@ Item {
     function folderFormats() {
         var seen = {}, result = []
         for (var i = 0; i < folderFiles.length; i++) {
-            var fmts = bridge.formatsFor(folderFiles[i])
+            var fmts = bridge.cachedFormatsFor(folderFiles[i])
             for (var j = 0; j < fmts.length; j++)
                 if (!seen[fmts[j]]) { seen[fmts[j]] = true; result.push(fmts[j]) }
         }
@@ -390,15 +423,12 @@ Item {
     }
 
     function performFolderScan(dir) {
-        panel.folderPath        = dir
-        panel.folderFiles       = bridge.scanFolder(dir, panel.folderRecurse, 100000)
-        panel.folderDefaultExt  = ""
-        formatRulesModel.clear()
-        
-        // Warn if we hit the limit
-        if (panel.folderFiles.length >= 100000) {
-            scanLimitDialog.open()
-        }
+        panel.folderPath = dir
+        panel.folderFiles = []
+        panel._folderCategories = []
+        panel._folderConvertCount = 0
+        panel._folderCanConvert = false
+        bridge.scanFolderAsync(dir, panel.folderRecurse, 100000)
     }
 
     function openOutDirPicker() {
@@ -437,20 +467,10 @@ Item {
             property bool canConvert: {
                 if (bridge.converting) return false
                 if (panel.mode === 0) return panel.enabledCount() > 0
-                if (panel.folderPath === "" || panel.folderFiles.length === 0) return false
-                // Need at least one file with a resolved target
-                for (var i = 0; i < panel.folderFiles.length; i++) {
-                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") return true
-                }
-                return false
+                return panel._folderCanConvert
             }
 
-            property int folderConvertCount: {
-                var fn = 0
-                for (var i = 0; i < panel.folderFiles.length; i++)
-                    if (panel.resolveTargetForFolder(panel.folderFiles[i]) !== "") fn++
-                return fn
-            }
+            property int folderConvertCount: panel._folderConvertCount
             property int folderSkipCount: panel.folderFiles.length - folderConvertCount
 
             property string label: {
@@ -911,22 +931,14 @@ Item {
                             Rectangle {
                                 width: 22; height: 22; radius: 5
                                 color: gearMa.containsMouse ? root.surfaceHi : "transparent"
-                                border.color: {
-                                    var item = batchModel.get(index)
-                                    var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovVideoMaxRate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0 || item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2")
-                                    return hasOverride ? root.accent : "transparent"
-                                }
+                                border.color: panel.hasOverrides(index) ? root.accent : "transparent"
                                 border.width: 1
                                 Behavior on color { ColorAnimation { duration: 80 } }
                                 TintedIcon {
                                     anchors.centerIn: parent
                                     width: 13; height: 13
                                     source: "qrc:/icons/cogwheel.svg"
-                                    color: {
-                                        var item = batchModel.get(index)
-                                        var hasOverride = item && (item.outputName !== "" || item.ovVideoCodec !== "" || item.ovAudioCodec !== "" || item.ovVideoBitrate !== "" || item.ovVideoMaxRate !== "" || item.ovAudioBitrate !== "" || item.ovCrf >= 0 || item.ovRateMode === "vbr1" || item.ovRateMode === "vbr2")
-                                        return hasOverride ? root.accent : root.textDim
-                                    }
+                                    color: panel.hasOverrides(index) ? root.accent : root.textDim
                                 }
                                 MouseArea {
                                     id: gearMa; anchors.fill: parent; hoverEnabled: true
@@ -1073,11 +1085,13 @@ Item {
                 }
 
                 Text {
-                    text: panel.folderFiles.length === 0 ? "no supported files found"
+                    text: bridge.scanning ? "scanning..."
+                          : (panel.folderFiles.length === 0 ? "no supported files found"
                           : (panel.folderFiles.length + " file"
-                             + (panel.folderFiles.length === 1 ? "" : "s") + " found")
+                             + (panel.folderFiles.length === 1 ? "" : "s") + " found"))
                     font.pixelSize: 11; font.family: root.appFont
-                    color: panel.folderFiles.length > 0 ? root.textMid : root.textDim
+                    color: bridge.scanning ? root.accent
+                           : (panel.folderFiles.length > 0 ? root.textMid : root.textDim)
                 }
                 Item { Layout.fillWidth: true }
             }
@@ -1186,7 +1200,7 @@ Item {
                                     color: root.textDim }
                                 MouseArea { id: rmRuleMa; anchors.fill: parent; hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: formatRulesModel.remove(index) }
+                                    onClicked: { formatRulesModel.remove(index); panel.recomputeFolderStats() } }
                             }
                         }
                     }
@@ -2028,6 +2042,7 @@ Item {
                                 ovResolution:   arResolutionInput.text,
                                 ovFramerate:    arFramerateInput.text
                             })
+                            panel.recomputeFolderStats()
                             addRulePopup.close()
                         }
                     }

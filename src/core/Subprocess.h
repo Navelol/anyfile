@@ -219,13 +219,27 @@ private:
         return true;
     }
 
+    // Proper MSVCRT argument quoting: backslashes before a quote or at
+    // the end of the arg (before the closing quote) must be doubled.
     static std::string quoteArg(const std::string& arg) {
         if (arg.find_first_of(" \t\n\r\"") == std::string::npos) return arg;
         std::string out = "\"";
+        int backslashes = 0;
         for (char c : arg) {
-            if (c == '"') out += "\\\"";
-            else          out += c;
+            if (c == '\\') {
+                ++backslashes;
+            } else if (c == '"') {
+                out.append(backslashes * 2 + 1, '\\');
+                out += '"';
+                backslashes = 0;
+            } else {
+                out.append(backslashes, '\\');
+                out += c;
+                backslashes = 0;
+            }
         }
+        // Double trailing backslashes (they precede the closing quote)
+        out.append(backslashes * 2, '\\');
         out += '"';
         return out;
     }

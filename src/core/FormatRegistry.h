@@ -78,25 +78,21 @@ private:
     // ── Magic-number detection ────────────────────────────────────────────────
     std::optional<Format> detectByMagic(const fs::path& path) const {
 #if ANYFILE_HAS_LIBMAGIC
-        // magic_open / magic_load are cheap — the database is loaded once and
-        // the cookie is used for a single call then closed.
-        // For a long-running app you'd want to cache the cookie; here we keep
-        // it simple and correct (thread-safe: each call owns its cookie).
-        magic_t cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
+        // thread_local cookie: magic_load (parses ~1MB database) runs once per
+        // thread instead of once per file.  Huge speedup for batch/folder scans.
+        thread_local magic_t cookie = [] {
+            magic_t c = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
+            if (c && magic_load(c, nullptr) != 0) {
+                magic_close(c);
+                c = nullptr;
+            }
+            return c;
+        }();
         if (!cookie) return std::nullopt;
 
-        if (magic_load(cookie, nullptr) != 0) {
-            magic_close(cookie);
-            return std::nullopt;
-        }
-
         const char* mime = magic_file(cookie, path.string().c_str());
-        std::optional<Format> result;
-        if (mime) {
-            result = mimeToFormat(std::string(mime));
-        }
-        magic_close(cookie);
-        return result;
+        if (!mime) return std::nullopt;
+        return mimeToFormat(std::string(mime));
 #else
         // ── Fallback: hand-rolled magic bytes (covers common formats) ─────────
         // Used when libmagic isn't available (e.g. bare Windows build without MSYS2 file pkg).
@@ -110,7 +106,7 @@ private:
         std::ifstream f(path.string(), std::ios::binary);
         if (!f) return std::nullopt;
 
-        unsigned char buf[32] = {};
+        unsigned char buf[512] = {};
         f.read(reinterpret_cast<char*>(buf), sizeof(buf));
         auto n = static_cast<size_t>(f.gcount());
         if (n < 4) return std::nullopt;
@@ -130,15 +126,10 @@ private:
             return fmt("zst", Category::Archive, "application/zstd");
         if (buf[0]=='R' && buf[1]=='a' && buf[2]=='r' && buf[3]=='!')
             return fmt("rar", Category::Archive, "application/x-rar-compressed");
-        // tar: check ustar signature at offset 257
-        {
-            std::ifstream tf(path.string(), std::ios::binary);
-            unsigned char tbuf[512] = {};
-            tf.read(reinterpret_cast<char*>(tbuf), 512);
-            if (tf.gcount() >= 262 &&
-                tbuf[257]=='u' && tbuf[258]=='s' && tbuf[259]=='t' && tbuf[260]=='a' && tbuf[261]=='r')
-                return fmt("tar", Category::Archive, "application/x-tar");
-        }
+        // tar: check ustar signature at offset 257 (same buffer, no second file open)
+        if (n >= 262 &&
+            buf[257]=='u' && buf[258]=='s' && buf[259]=='t' && buf[260]=='a' && buf[261]=='r')
+            return fmt("tar", Category::Archive, "application/x-tar");
 
         // ── Images ────────────────────────────────────────────────────────────
         if (buf[0]==0x89 && buf[1]=='P' && buf[2]=='N' && buf[3]=='G')

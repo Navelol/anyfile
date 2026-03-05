@@ -24,8 +24,7 @@ public:
 
         if (job.onProgress) job.onProgress(0.05f, "Rendering PDF pages...");
 
-        fs::path tempDir = fs::temp_directory_path() / ("anyfile_pdf_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()));
+        fs::path tempDir = makeTempName("anyfile_pdf_");
         fs::create_directories(tempDir);
 
         fs::path pagePrefix = tempDir / "page";

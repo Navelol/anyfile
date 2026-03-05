@@ -31,7 +31,7 @@ struct ParsedArgs {
     fs::path outputDir;
     std::string targetExt;  // e.g. "mp4" — used when no format map
 
-    // Format mapping — "mp4:mp3||avi:mp4" → {{"mp4","mp3"},{"avi","mp4"}}
+    // Format mapping — "mp4:mp3,avi:mp4" → {{"mp4","mp3"},{"avi","mp4"}}
     // If empty and targetExt is set, convert everything possible to targetExt
     std::map<std::string, std::string> formatMap;
 

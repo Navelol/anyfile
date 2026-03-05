@@ -17,8 +17,7 @@ public:
         if (job.onProgress) job.onProgress(0.1f, "Reading archive...");
 
         // Step 1: extract input archive to a temp directory
-        fs::path tempDir = fs::temp_directory_path() / ("everyfile_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()));
+        fs::path tempDir = makeTempName("everyfile_");
         fs::create_directories(tempDir);
 
         auto extractResult = extractArchive(job.inputPath, tempDir);
@@ -68,9 +67,24 @@ private:
 
         struct archive_entry* entry;
         while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
-            // Rewrite path to be inside destDir
-            std::string entryPath = destDir.string() + "/" + archive_entry_pathname(entry);
-            archive_entry_set_pathname(entry, entryPath.c_str());
+            // Sanitize entry path to prevent zip-slip (path traversal) attacks.
+            fs::path clean;
+            for (auto& component : fs::path(archive_entry_pathname(entry))) {
+                std::string s = component.string();
+                if (s == ".." || s == "/" || s == "\\") continue;
+                clean /= component;
+            }
+            if (clean.empty()) continue;
+
+            fs::path fullPath    = destDir / clean;
+            fs::path resolved    = fs::weakly_canonical(fullPath);
+            fs::path resolvedDir = fs::weakly_canonical(destDir);
+            auto [mEnd, rEnd] = std::mismatch(
+                resolvedDir.begin(), resolvedDir.end(),
+                resolved.begin(), resolved.end());
+            if (mEnd != resolvedDir.end()) continue; // escapes destDir — skip
+
+            archive_entry_set_pathname(entry, fullPath.string().c_str());
 
             if (archive_write_header(ext, entry) != ARCHIVE_OK) {
                 std::string err = archive_error_string(ext);
@@ -141,6 +155,7 @@ private:
         }
 
         // Walk srcDir and add every file
+        std::vector<char> buf(8192);
         for (auto& dirEntry : fs::recursive_directory_iterator(srcDir)) {
             if (!dirEntry.is_regular_file()) continue;
 
@@ -157,7 +172,6 @@ private:
 
             // Write file contents
             std::ifstream f(filePath.string(), std::ios::binary);
-            std::vector<char> buf(8192);
             while ((f.read(buf.data(), buf.size()), f.gcount() > 0))
                 archive_write_data(a, buf.data(), f.gcount());
 

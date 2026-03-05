@@ -133,8 +133,7 @@ private:
         if (job.framerate) fpsFilter = "fps=" + *job.framerate + ",";
         std::string filters = fpsFilter + scaleFilter;
 
-        fs::path palette = fs::temp_directory_path() / ("anyfile_palette_" +
-            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".png");
+        fs::path palette = makeTempName("anyfile_palette_", ".png");
 
         // Pass 1
         int rc = Process::runCancellable("ffmpeg", {

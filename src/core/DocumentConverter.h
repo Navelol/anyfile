@@ -101,8 +101,7 @@ private:
     static std::string convertWithLibreOffice(const ConversionJob& job) {
         const std::string& outExt = job.outputFormat.ext;
 
-        fs::path tempDir = fs::temp_directory_path() / ("anyfile_doc_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()));
+        fs::path tempDir = makeTempName("anyfile_doc_");
         fs::create_directories(tempDir);
 
         std::string filter = libreOfficeFilter(outExt);

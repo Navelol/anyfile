@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QHash>
 #include <QThread>
 #include <QTimer>
 #include <QFileDialog>
@@ -82,6 +83,88 @@ signals:
     void finished(int succeeded, int failed, double totalSecs);
 };
 
+// ── Worker thread for async folder scanning ──────────────────────────────────
+class ScanWorker : public QObject {
+    Q_OBJECT
+public:
+    QString dirPath;
+    bool recursive = false;
+    int maxFiles = 100000;
+
+public slots:
+    void run() {
+        auto& reg = FormatRegistry::instance();
+        QStringList files;
+        QHash<QString, QString>     formatCache;    // filePath → detected ext
+        QHash<QString, QStringList> targetsCache;   // filePath → available target exts
+        QStringList categories;
+        QHash<QString, bool> catSeen;
+
+        fs::path root(dirPath.toStdString());
+        if (!fs::exists(root) || !fs::is_directory(root)) {
+            emit finished(files, formatCache, targetsCache, categories);
+            return;
+        }
+
+        auto scan = [&](const fs::path& dir, bool recurse, auto& self) -> void {
+            if (files.size() >= maxFiles) return;
+            std::error_code ec;
+            fs::directory_iterator it(dir, ec);
+            if (ec) return;
+            for (auto& entry : it) {
+                if (files.size() >= maxFiles) return;
+                try {
+                    if (entry.is_regular_file(ec) && !ec) {
+                        auto fmt = reg.detect(entry.path());
+                        if (fmt) {
+                            QString path = QString::fromStdString(entry.path().string());
+                            QString ext  = QString::fromStdString(fmt->ext);
+                            files << path;
+                            formatCache[path] = ext;
+
+                            // Cache targets
+                            auto tgts = reg.targetsFor(fmt->ext);
+                            QStringList tgtList;
+                            tgtList.reserve((int)tgts.size());
+                            for (auto& t : tgts) tgtList << QString::fromStdString(t);
+                            targetsCache[path] = tgtList;
+
+                            // Track categories
+                            QString cat;
+                            switch (fmt->category) {
+                                case Category::Image:    cat = "Image";    break;
+                                case Category::Video:    cat = "Video";    break;
+                                case Category::Audio:    cat = "Audio";    break;
+                                case Category::Model3D:  cat = "3D Model"; break;
+                                case Category::Document: cat = "Document"; break;
+                                case Category::Ebook:    cat = "Ebook";    break;
+                                case Category::Archive:  cat = "Archive";  break;
+                                case Category::Data:     cat = "Data";     break;
+                                default:                 cat = "Unknown";  break;
+                            }
+                            if (!catSeen.contains(cat)) {
+                                catSeen[cat] = true;
+                                categories << cat;
+                            }
+                        }
+                    } else if (recurse && entry.is_directory(ec) && !ec) {
+                        self(entry.path(), recurse, self);
+                    }
+                } catch (...) {}
+            }
+        };
+        scan(root, recursive, scan);
+
+        emit finished(files, formatCache, targetsCache, categories);
+    }
+
+signals:
+    void finished(QStringList files,
+                  QHash<QString, QString> formatCache,
+                  QHash<QString, QStringList> targetsCache,
+                  QStringList categories);
+};
+
 // ── The main QML-exposed bridge class ────────────────────────────────────────
 class ConverterBridge : public QObject {
     Q_OBJECT
@@ -92,6 +175,7 @@ class ConverterBridge : public QObject {
     Q_PROPERTY(QString progressMessage READ progressMessage NOTIFY progressChanged)
     Q_PROPERTY(int batchTotal READ batchTotal NOTIFY batchTotalChanged)
     Q_PROPERTY(int batchDone  READ batchDone  NOTIFY batchDoneChanged)
+    Q_PROPERTY(bool scanning  READ scanning   NOTIFY scanningChanged)
 
 public:
     explicit ConverterBridge(QObject* parent = nullptr) : QObject(parent) {}
@@ -101,6 +185,7 @@ public:
     QString progressMessage() const { return m_progressMessage; }
     int     batchTotal()      const { return m_batchTotal; }
     int     batchDone()       const { return m_batchDone; }
+    bool    scanning()        const { return m_scanning; }
 
     Q_INVOKABLE void cancelConversion() {
         m_cancelFlag.store(true);
@@ -359,17 +444,6 @@ public:
     {
         if (m_converting || jobSpecs.isEmpty()) return;
 
-        m_cancelFlag.store(false);
-        m_converting  = true;
-        m_batchTotal  = jobSpecs.size();
-        m_batchDone   = 0;
-        m_progress    = 0.0f;
-        m_progressMessage = QString("0 / %1").arg(m_batchTotal);
-        emit convertingChanged();
-        emit progressChanged();
-        emit batchTotalChanged();
-        emit batchDoneChanged();
-
         const bool forceGlobal = globalOptions.value("force", false).toBool();
 
         QList<ConversionJob> jobs;
@@ -411,45 +485,7 @@ public:
             jobs << std::move(job);
         }
 
-        // Reuse the existing BatchWorker infrastructure
-        auto* worker = new BatchWorker();
-        auto* thread = new QThread(this);
-        worker->jobs = std::move(jobs);
-        worker->moveToThread(thread);
-
-        connect(thread, &QThread::started, worker, &BatchWorker::run);
-
-        connect(worker, &BatchWorker::fileStarted, this,
-            [this](int index, int total, const QString& filename) {
-                m_progressMessage = QString("%1 / %2  —  %3").arg(index + 1).arg(total).arg(filename);
-                m_progress = (float)index / total;
-                emit progressChanged();
-            }, Qt::QueuedConnection);
-
-        connect(worker, &BatchWorker::fileCompleted, this,
-            [this](int done, int total, const QString& filename, bool success, const QString& detail) {
-                m_batchDone = done;
-                m_progress  = (float)done / total;
-                m_progressMessage = QString("%1 / %2  —  %3").arg(done).arg(total).arg(filename);
-                emit batchDoneChanged();
-                emit progressChanged();
-                emit batchFileCompleted(done, total, filename, success, detail);
-            }, Qt::QueuedConnection);
-
-        connect(worker, &BatchWorker::finished, this,
-            [this, worker, thread](int succeeded, int failed, double totalSecs) {
-                thread->quit();
-                worker->deleteLater();
-                thread->deleteLater();
-                m_converting = false;
-                m_progress   = 1.0f;
-                m_progressMessage = QString("Done — %1 succeeded, %2 failed").arg(succeeded).arg(failed);
-                emit convertingChanged();
-                emit progressChanged();
-                emit batchFinished(succeeded, failed, totalSecs);
-            }, Qt::QueuedConnection);
-
-        thread->start();
+        startBatchExecution(std::move(jobs));
     }
 
     // ── Scan a folder for files with known formats ─────────────────────────────
@@ -509,6 +545,82 @@ public:
         return result;
     }
 
+    // ── Async folder scan — runs in background thread, emits folderScanComplete ─
+    Q_INVOKABLE void scanFolderAsync(const QString& dirPath, bool recursive, int maxFiles = 100000) {
+        if (m_scanning) return;
+        m_scanning = true;
+        m_formatCache.clear();
+        m_targetsCache.clear();
+        emit scanningChanged();
+
+        auto* worker = new ScanWorker();
+        auto* thread = new QThread(this);
+        worker->dirPath   = dirPath;
+        worker->recursive = recursive;
+        worker->maxFiles  = maxFiles;
+        worker->moveToThread(thread);
+
+        connect(thread, &QThread::started, worker, &ScanWorker::run);
+        connect(worker, &ScanWorker::finished, this,
+            [this, worker, thread](QStringList files,
+                                   QHash<QString, QString> fmtCache,
+                                   QHash<QString, QStringList> tgtCache,
+                                   QStringList categories) {
+                thread->quit();
+                worker->deleteLater();
+                thread->deleteLater();
+                m_formatCache  = std::move(fmtCache);
+                m_targetsCache = std::move(tgtCache);
+                m_scanning = false;
+                emit scanningChanged();
+                emit folderScanComplete(files, categories);
+            }, Qt::QueuedConnection);
+
+        thread->start();
+    }
+
+    // ── Cached format lookups — O(1) from scan cache, fallback to live detect ───
+    Q_INVOKABLE QString cachedDetectFormat(const QString& filePath) const {
+        auto it = m_formatCache.find(filePath);
+        if (it != m_formatCache.end()) return it.value();
+        return detectFormat(filePath);
+    }
+
+    Q_INVOKABLE QStringList cachedFormatsFor(const QString& filePath) const {
+        auto it = m_targetsCache.find(filePath);
+        if (it != m_targetsCache.end()) return it.value();
+        return formatsFor(filePath);
+    }
+
+    // ── Compute folder stats in a single pass (avoids O(N) QML bindings) ────────
+    // Returns {convertCount, canConvert} given current rules + default ext.
+    Q_INVOKABLE QVariantMap computeFolderStats(
+        const QStringList& files,
+        const QVariantList& rules,
+        const QString& defaultExt) const
+    {
+        int convertCount = 0;
+        for (const QString& fp : files) {
+            QString src = cachedDetectFormat(fp);
+            QString tgt;
+            // Check rules
+            for (const QVariant& rv : rules) {
+                QVariantMap r = rv.toMap();
+                if (r.value("fromExt").toString() == src) {
+                    tgt = r.value("toExt").toString();
+                    break;
+                }
+            }
+            if (tgt.isEmpty()) tgt = defaultExt;
+            if (tgt.isEmpty()) continue;
+            // Verify convertibility
+            QStringList fmts = cachedFormatsFor(fp);
+            if (fmts.contains(tgt)) ++convertCount;
+        }
+        return {{"convertCount", convertCount},
+                {"canConvert",   convertCount > 0}};
+    }
+
     // ── Check which output files would already exist (for overwrite dialog) ────
     Q_INVOKABLE QStringList wouldOverwrite(
         const QStringList& inputPaths,
@@ -537,17 +649,6 @@ public:
     {
         if (m_converting || inputPaths.isEmpty()) return;
 
-        m_cancelFlag.store(false);
-        m_converting  = true;
-        m_batchTotal  = inputPaths.size();
-        m_batchDone   = 0;
-        m_progress    = 0.0f;
-        m_progressMessage = QString("0 / %1").arg(m_batchTotal);
-        emit convertingChanged();
-        emit progressChanged();
-        emit batchTotalChanged();
-        emit batchDoneChanged();
-
         const bool forceOverwrite = options.value("force", false).toBool();
 
         QList<ConversionJob> jobs;
@@ -567,6 +668,83 @@ public:
             job.cancelFlag = &m_cancelFlag;
             jobs << std::move(job);
         }
+
+        startBatchExecution(std::move(jobs));
+    }
+
+signals:
+    void convertingChanged();
+    void progressChanged();
+    void conversionSucceeded(const QString& outputPath,
+                             double durationSeconds,
+                             qint64 inputBytes,
+                             qint64 outputBytes,
+                             const QStringList& warnings);
+    void conversionFailed(const QString& errorMessage);
+    void batchTotalChanged();
+    void batchDoneChanged();
+    void batchFileCompleted(int done, int total, const QString& filename,
+                            bool success, const QString& detail);
+    void batchFinished(int succeeded, int failed, double totalSecs);
+    void scanningChanged();
+    void folderScanComplete(QStringList files, QStringList categories);
+
+private:
+    bool    m_converting      = false;
+    float   m_progress        = 0.0f;
+    QString m_progressMessage;
+    int     m_batchTotal      = 0;
+    int     m_batchDone       = 0;
+    bool    m_scanning        = false;
+    std::atomic<bool> m_cancelFlag { false };
+    QHash<QString, QString>     m_formatCache;   // filePath → detected ext
+    QHash<QString, QStringList> m_targetsCache;  // filePath → available targets
+
+    void applyOptions(ConversionJob& job, const QVariantMap& opts) {
+        auto getStr = [&](const QString& key) -> std::optional<std::string> {
+            if (opts.contains(key)) {
+                QString v = opts.value(key).toString();
+                if (!v.isEmpty()) return v.toStdString();
+            }
+            return std::nullopt;
+        };
+
+        job.videoCodec   = getStr("videoCodec");
+        job.audioCodec   = getStr("audioCodec");
+        job.videoBitrate = getStr("videoBitrate");
+        job.videoMaxRate = getStr("videoMaxRate");
+        job.audioBitrate = getStr("audioBitrate");
+        job.resolution   = getStr("resolution");
+        job.framerate    = getStr("framerate");
+        job.pixelFormat  = getStr("pixelFormat");
+        if (opts.contains("force")) job.force = opts.value("force").toBool();
+
+        // rateMode: "crf" (default), "vbr1" (1-pass VBR), "vbr2" (2-pass VBR)
+        if (opts.contains("rateMode")) {
+            QString rm = opts.value("rateMode").toString();
+            if (rm == "vbr1") job.twoPass = false;
+            if (rm == "vbr2") job.twoPass = true;
+            // "crf" → leave twoPass false, CRF is set below
+        }
+
+        if (opts.contains("crf")) {
+            bool ok;
+            int crf = opts.value("crf").toInt(&ok);
+            if (ok) job.crf = crf;
+        }
+    }
+
+    void startBatchExecution(QList<ConversionJob>&& jobs) {
+        m_cancelFlag.store(false);
+        m_converting  = true;
+        m_batchTotal  = jobs.size();
+        m_batchDone   = 0;
+        m_progress    = 0.0f;
+        m_progressMessage = QString("0 / %1").arg(m_batchTotal);
+        emit convertingChanged();
+        emit progressChanged();
+        emit batchTotalChanged();
+        emit batchDoneChanged();
 
         auto* worker = new BatchWorker();
         auto* thread = new QThread(this);
@@ -606,63 +784,6 @@ public:
             }, Qt::QueuedConnection);
 
         thread->start();
-    }
-
-signals:
-    void convertingChanged();
-    void progressChanged();
-    void conversionSucceeded(const QString& outputPath,
-                             double durationSeconds,
-                             qint64 inputBytes,
-                             qint64 outputBytes,
-                             const QStringList& warnings);
-    void conversionFailed(const QString& errorMessage);
-    void batchTotalChanged();
-    void batchDoneChanged();
-    void batchFileCompleted(int done, int total, const QString& filename,
-                            bool success, const QString& detail);
-    void batchFinished(int succeeded, int failed, double totalSecs);
-
-private:
-    bool    m_converting      = false;
-    float   m_progress        = 0.0f;
-    QString m_progressMessage;
-    int     m_batchTotal      = 0;
-    int     m_batchDone       = 0;
-    std::atomic<bool> m_cancelFlag { false };
-
-    void applyOptions(ConversionJob& job, const QVariantMap& opts) {
-        auto getStr = [&](const QString& key) -> std::optional<std::string> {
-            if (opts.contains(key)) {
-                QString v = opts.value(key).toString();
-                if (!v.isEmpty()) return v.toStdString();
-            }
-            return std::nullopt;
-        };
-
-        job.videoCodec   = getStr("videoCodec");
-        job.audioCodec   = getStr("audioCodec");
-        job.videoBitrate = getStr("videoBitrate");
-        job.videoMaxRate = getStr("videoMaxRate");
-        job.audioBitrate = getStr("audioBitrate");
-        job.resolution   = getStr("resolution");
-        job.framerate    = getStr("framerate");
-        job.pixelFormat  = getStr("pixelFormat");
-        if (opts.contains("force")) job.force = opts.value("force").toBool();
-
-        // rateMode: "crf" (default), "vbr1" (1-pass VBR), "vbr2" (2-pass VBR)
-        if (opts.contains("rateMode")) {
-            QString rm = opts.value("rateMode").toString();
-            if (rm == "vbr1") job.twoPass = false;
-            if (rm == "vbr2") job.twoPass = true;
-            // "crf" → leave twoPass false, CRF is set below
-        }
-
-        if (opts.contains("crf")) {
-            bool ok;
-            int crf = opts.value("crf").toInt(&ok);
-            if (ok) job.crf = crf;
-        }
     }
 
     void onConversionFinished(const ConversionResult& res) {

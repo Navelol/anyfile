@@ -6,10 +6,24 @@
 #include <functional>
 #include <optional>
 #include <atomic>
+#include <random>
+#include <cstdio>
 
 namespace converter {
 
 namespace fs = std::filesystem;
+
+// ── Secure temp path generation ──────────────────────────────────────────────
+// Uses std::random_device instead of predictable timestamps to prevent
+// symlink attacks on shared machines.
+inline fs::path makeTempName(const std::string& prefix, const std::string& suffix = "") {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint32_t> dist(0, 0xFFFFFFFF);
+    char hex[16];
+    std::snprintf(hex, sizeof(hex), "%08x", dist(gen));
+    return fs::temp_directory_path() / (prefix + hex + suffix);
+}
 
 // ── Format categories ─────────────────────────────────────────────────────────
 enum class Category {

@@ -390,33 +390,29 @@ private:
         return ss.str();
     }
 
-    static std::string toXml(const json& j, const std::string& rootTag = "root", int indent = 0) {
-        std::ostringstream ss;
+    static void toXmlImpl(std::ostringstream& ss, const json& j, const std::string& rootTag, int indent) {
         std::string pad(indent * 2, ' ');
-
         if (j.is_object()) {
             ss << pad << "<" << rootTag << ">\n";
             for (auto& [key, val] : j.items())
-                ss << toXml(val, key, indent + 1);
+                toXmlImpl(ss, val, key, indent + 1);
             ss << pad << "</" << rootTag << ">\n";
         } else if (j.is_array()) {
             for (auto& item : j)
-                ss << toXml(item, rootTag, indent);
+                toXmlImpl(ss, item, rootTag, indent);
         } else {
             std::string val = j.is_string() ? j.get<std::string>() : j.dump();
             ss << pad << "<" << rootTag << ">" << xmlEscape(val) << "</" << rootTag << ">\n";
         }
-        return ss.str();
     }
 
-    static std::string toYaml(const json& j, int indent = 0) {
-        std::ostringstream ss;
+    static void toYamlImpl(std::ostringstream& ss, const json& j, int indent) {
         std::string pad(indent * 2, ' ');
-
         if (j.is_object()) {
             for (auto& [key, val] : j.items()) {
                 if (val.is_object() || val.is_array()) {
-                    ss << pad << key << ":\n" << toYaml(val, indent + 1);
+                    ss << pad << key << ":\n";
+                    toYamlImpl(ss, val, indent + 1);
                 } else if (val.is_string()) {
                     ss << pad << key << ": " << val.get<std::string>() << "\n";
                 } else {
@@ -426,7 +422,8 @@ private:
         } else if (j.is_array()) {
             for (auto& item : j) {
                 if (item.is_object() || item.is_array()) {
-                    ss << pad << "-\n" << toYaml(item, indent + 1);
+                    ss << pad << "-\n";
+                    toYamlImpl(ss, item, indent + 1);
                 } else if (item.is_string()) {
                     ss << pad << "- " << item.get<std::string>() << "\n";
                 } else {
@@ -436,6 +433,17 @@ private:
         } else {
             ss << pad << (j.is_string() ? j.get<std::string>() : j.dump()) << "\n";
         }
+    }
+
+    static std::string toXml(const json& j, const std::string& rootTag = "root", int indent = 0) {
+        std::ostringstream ss;
+        toXmlImpl(ss, j, rootTag, indent);
+        return ss.str();
+    }
+
+    static std::string toYaml(const json& j, int indent = 0) {
+        std::ostringstream ss;
+        toYamlImpl(ss, j, indent);
         return ss.str();
     }
 
