@@ -29,11 +29,12 @@ Item {
     property var _folderCategories: []
 
     // -- Folder mode state -----------------------------------------------------
-    property string folderPath:    ""
-    property var    folderFiles:   []
-    property string folderOutDir:  ""
-    property bool   folderSameDir: true
-    property bool   folderRecurse: true
+    property string folderPath:        ""
+    property string _lastScannedPath:  ""   // tracks which path rules/categories belong to
+    property var    folderFiles:       []
+    property string folderOutDir:      ""
+    property bool   folderSameDir:     true
+    property bool   folderRecurse:     true
 
     // Folder format rules: [{fromExt, toExt}] + a default catch-all
     ListModel { id: formatRulesModel }
@@ -50,10 +51,14 @@ Item {
             if (batchList.count > 0) batchList.positionViewAtEnd()
         }
         function onFolderScanComplete(files, categories) {
+            var isNewFolder = (panel.folderPath !== panel._lastScannedPath)
+            panel._lastScannedPath     = panel.folderPath
             panel.folderFiles          = files
             panel._folderCategories    = categories
-            panel.folderDefaultExt     = ""
-            formatRulesModel.clear()
+            if (isNewFolder) {
+                panel.folderDefaultExt = ""
+                formatRulesModel.clear()
+            }
             panel.recomputeFolderStats()
             if (files.length >= 100000) scanLimitDialog.open()
         }
@@ -418,11 +423,14 @@ Item {
     }
 
     function performFolderScan(dir) {
+        var isNewFolder = (dir !== panel._lastScannedPath)
         panel.folderPath = dir
-        panel.folderFiles = []
-        panel._folderCategories = []
-        panel._folderConvertCount = 0
-        panel._folderCanConvert = false
+        if (isNewFolder) {
+            panel.folderFiles = []
+            panel._folderCategories = []
+            panel._folderConvertCount = 0
+            panel._folderCanConvert = false
+        }
         bridge.scanFolderAsync(dir, panel.folderRecurse, 100000)
     }
 
@@ -1133,10 +1141,13 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             panel.folderPath = ""
+                            panel._lastScannedPath = ""
                             panel.folderFiles = []
                             panel._folderCategories = []
                             panel._folderConvertCount = 0
                             panel._folderCanConvert = false
+                            formatRulesModel.clear()
+                            panel.folderDefaultExt = ""
                         }
                     }
                 }
@@ -1404,6 +1415,44 @@ Item {
                     MouseArea { id: fcdMa; anchors.fill: parent; hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: panel.openOutDirPicker() }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // Open output location in OS file browser
+                Rectangle {
+                    property bool hasTarget: panel.folderPath !== "" && (panel.folderSameDir || panel.folderOutDir !== "")
+                    width: oopLbl.implicitWidth + 22; height: 28; radius: 7
+                    color: hasTarget && oopMa.containsMouse ? root.surfaceHi : root.surface
+                    border.color: root.border; border.width: 1
+                    opacity: hasTarget ? 1.0 : 0.4
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.InOutQuad } }
+                    Text {
+                        id: oopLbl
+                        anchors.centerIn: parent
+                        text: "open output location"
+                        font.pixelSize: 11
+                        font.family: root.appFont
+                        color: root.textDim
+                    }
+                    MouseArea {
+                        id: oopMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: parent.hasTarget
+                        cursorShape: parent.hasTarget ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: {
+                            var path = ""
+                            if (panel.folderSameDir) {
+                                path = panel.folderPath
+                            } else if (panel.folderOutDir !== "") {
+                                path = panel.folderOutDir
+                            }
+                            if (path !== "")
+                                bridge.openFolderLocation(path)
+                        }
+                    }
                 }
             }
         }
@@ -1843,7 +1892,7 @@ Item {
             arRateMode = "crf"
             arVideoInput.setValue("")
             arAudioInput.setValue("")
-            arCrfInput.setValue("")
+            arCrfInput.text = ""
             arVbTargetInput.setValue("")
             arVbMaxInput.setValue("")
             arAudioBitrateInput.setValue("")
@@ -1945,9 +1994,9 @@ Item {
                             onClicked: {
                                 addRulePopup.arRateMode = modelData.id
                                 if (modelData.id === "crf") {
-                                        arVbTargetInput.setValue(""); arVbMaxInput.setValue("")
+                                    arVbTargetInput.setValue(""); arVbMaxInput.setValue("")
                                 } else {
-                                        arCrfInput.text = ""
+                                    arCrfInput.text = ""
                                 }
                             }
                         }
@@ -2154,6 +2203,19 @@ Item {
         height: Math.min(arFmtCol.implicitHeight + 20, 340)
         clip: true
 
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "y"; from: arFormatPicker.y - 6; to: arFormatPicker.y; duration: 120; easing.type: Easing.OutCubic }
+            }
+        }
+        exit: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 100; easing.type: Easing.InCubic }
+                NumberAnimation { property: "y"; from: arFormatPicker.y; to: arFormatPicker.y - 6; duration: 100; easing.type: Easing.InCubic }
+            }
+        }
+
         background: Rectangle {
             color: root.surface; radius: 8
             border.color: root.border; border.width: 1
@@ -2206,7 +2268,7 @@ Item {
                                             addRulePopup.arRateMode = "crf"
                                             arVideoInput.setValue("")
                                             arAudioInput.setValue("")
-                                            arCrfInput.setValue("")
+                                            arCrfInput.text = ""
                                             arVbTargetInput.setValue("")
                                             arVbMaxInput.setValue("")
                                             arAudioBitrateInput.setValue("")
@@ -2443,6 +2505,7 @@ Item {
         property int rowIndex: -1
         property var formats:  []
         padding: 10
+        opacity: 1.0
 
         background: Rectangle {
             color: root.surfaceHi; radius: 10
@@ -2456,6 +2519,19 @@ Item {
             x = Math.min(pos.x, panel.width - implicitWidth - 12)
             y = pos.y
             open()
+        }
+
+        enter: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 160; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "y"; from: fmtPopup.y - 6; to: fmtPopup.y; duration: 160; easing.type: Easing.OutCubic }
+            }
+        }
+        exit: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; duration: 140; easing.type: Easing.InCubic }
+                NumberAnimation { property: "y"; from: fmtPopup.y; to: fmtPopup.y - 4; duration: 140; easing.type: Easing.InCubic }
+            }
         }
 
         contentItem: Flow {

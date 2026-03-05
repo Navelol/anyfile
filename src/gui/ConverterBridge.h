@@ -10,6 +10,7 @@
 #include <QThread>
 #include <QTimer>
 #include <QFileDialog>
+#include <QDesktopServices>
 #include <QtQml/qqml.h>
 
 #include "../core/Dispatcher.h"
@@ -668,6 +669,15 @@ public:
                 result << QString::fromStdString(out.string());
         }
         return result;
+    }
+
+    // Open a folder in the OS file manager (Windows, macOS, Linux).
+    Q_INVOKABLE void openFolderLocation(const QString& path) const
+    {
+        if (path.isEmpty())
+            return;
+        QUrl url = QUrl::fromLocalFile(path);
+        QDesktopServices::openUrl(url);
     }
 
     // ── Batch convert a list of files with per-file target extensions ──────────
