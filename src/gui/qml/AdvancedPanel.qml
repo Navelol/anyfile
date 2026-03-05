@@ -27,6 +27,7 @@ Column {
 
     // Drive field visibility from targetExt directly — much simpler and correct
     property bool showVideoFields: ["mp4","mkv","webm","mov","avi","ts","m4v"].indexOf(targetExt) >= 0
+    property bool showImageFields: ["png","jpg","jpeg","webp","bmp","tif","tiff","avif","heic","heif","ico"].indexOf(targetExt) >= 0
     property bool showAudioFields: ["mp4","mkv","webm","mov","avi","ts","m4v",
                                     "mp3","flac","wav","ogg","opus","aac","m4a"].indexOf(targetExt) >= 0
     property bool isGifTarget: targetExt === "gif"
@@ -364,6 +365,8 @@ Column {
                             hint: "23 (H.264 default)"
                             inputHints: Qt.ImhDigitsOnly
                             validator: IntValidator { bottom: 0; top: 51 }
+                            maxLength: 2
+                            invalidTip: "CRF must be 0-51"
                             enabled: adv.rateMode === "crf"
                             opacity: adv.rateMode === "crf" ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: adv.animMs + 10; easing.type: Easing.InOutCubic } }
@@ -399,26 +402,32 @@ Column {
                 // Resolution
                 ColumnLayout {
                     spacing: 3
-                    visible: adv.showVideoFields || adv.isGifTarget
+                    visible: adv.showVideoFields || adv.isGifTarget || adv.showImageFields
                     Layout.alignment: Qt.AlignTop
                     opacity: visible ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
                     AdvFieldLabel { label: "Resolution"
                         tip: "Output resolution as WxH.\n3840x2160 (4K), 1920x1080, 1280x720, 854x480.\nLeave blank to keep source resolution." }
                     AdvTextInput { id: resInput; hint: "1920x1080"
+                        maxLength: 11
+                        validator: RegularExpressionValidator { regularExpression: /^$|^[1-9]\d{0,4}[xX][1-9]\d{0,4}$/ }
+                        invalidTip: "Use WxH, e.g. 1920x1080"
                         onTextChanged: adv.resolution = text }
                 }
 
                 // Framerate
                 ColumnLayout {
                     spacing: 3
-                    visible: adv.showVideoFields || adv.isGifTarget
+                    visible: adv.showVideoFields || adv.isGifTarget || adv.showImageFields
                     Layout.alignment: Qt.AlignTop
                     opacity: visible ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }
                     AdvFieldLabel { label: "Framerate"
                         tip: "Output frames per second.\n24 (cinema), 25 (PAL), 30, 60 (gaming/sports).\nLeave blank to keep source framerate." }
                     AdvTextInput { id: fpsInput; hint: "24, 30, 60"
+                        maxLength: 6
+                        validator: RegularExpressionValidator { regularExpression: /^$|^[1-9]\d{0,2}(\.\d{1,2})?$/ }
+                        invalidTip: "Use 1-999, optional decimals (e.g. 29.97)"
                         onTextChanged: adv.framerate = text }
                 }
 
@@ -495,8 +504,14 @@ Column {
         property string hint: ""
         property var validator: null
         property int inputHints: 0
+        property int maxLength: 64
+        property string invalidTip: "Invalid value"
         width: 170; height: 28; radius: 7; color: root.surfaceHi
-        border.color: ti.activeFocus ? root.accent : root.border; border.width: 1
+        border.color: (ti.text.length > 0 && !ti.acceptableInput)
+                      ? root.errorClr
+                      : (ti.activeFocus ? root.accent : root.border)
+        border.width: 1
+        Behavior on border.color { ColorAnimation { duration: 90 } }
         TextInput {
             id: ti
             anchors.fill: parent
@@ -506,6 +521,11 @@ Column {
             color: root.textPrim
             inputMethodHints: advInputRoot.inputHints
             validator: advInputRoot.validator
+            maximumLength: advInputRoot.maxLength
+            ToolTip.visible: activeFocus && text.length > 0 && !acceptableInput
+            ToolTip.delay: 120
+            ToolTip.timeout: 2600
+            ToolTip.text: advInputRoot.invalidTip
             Text {
                 anchors.fill: parent
                 text: advInputRoot.hint
