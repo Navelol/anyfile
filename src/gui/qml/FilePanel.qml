@@ -584,6 +584,7 @@ Item {
                 id: batchList
                 anchors.fill: parent; anchors.margins: 8; spacing: 3
                 model: batchResults; clip: true
+                boundsBehavior: Flickable.StopAtBounds
                 delegate: RowLayout {
                     width: batchList.width; spacing: 8
                     Text { text: model.success ? "\u2713" : "\u2717"
@@ -757,6 +758,7 @@ Item {
                         contentHeight: height
                         flickableDirection: Flickable.HorizontalFlick
                         clip: true
+                        boundsBehavior: Flickable.StopAtBounds
                         Row {
                             id: overrideRow
                             y: (parent.height - height) / 2; spacing: 5
@@ -869,6 +871,7 @@ Item {
                     model: batchModel
                     spacing: 4
                     clip: true
+                    boundsBehavior: Flickable.StopAtBounds
 
                     property bool allEnabled: {
                         if (batchModel.count === 0) return false
@@ -1402,6 +1405,7 @@ Item {
                             contentWidth: folderDefaultRow.implicitWidth
                             contentHeight: height
                             flickableDirection: Flickable.HorizontalFlick
+                            boundsBehavior: Flickable.StopAtBounds
                             clip: true
 
                             WheelHandler {
@@ -1485,6 +1489,7 @@ Item {
                                   rightMargin: folderListSB.visible ? 4 : 0 }
                         model: panel.folderFiles.length
                         spacing: 2; clip: true
+                        boundsBehavior: Flickable.StopAtBounds
                         opacity: bridge.scanning ? 0.25 : 1
                         Behavior on opacity { NumberAnimation { duration: 200 } }
 

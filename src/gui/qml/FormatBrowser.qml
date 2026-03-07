@@ -28,6 +28,9 @@ Rectangle {
         border.width: 6
     }
 
+    // Block all mouse events from passing through to content underneath
+    MouseArea { anchors.fill: parent; hoverEnabled: true }
+
     ColumnLayout {
         id: inner
         anchors.top: parent.top
@@ -137,6 +140,7 @@ Rectangle {
                 contentHeight: detailCol.implicitHeight
                 flickableDirection: Flickable.VerticalFlick
                 clip: true
+                boundsBehavior: Flickable.StopAtBounds
 
                 Column {
                     id: detailCol

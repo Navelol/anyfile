@@ -148,6 +148,9 @@ private:
             return fmt("tiff", Category::Image, "image/tiff");
         if (n>=12 && buf[0]==0x00 && buf[1]==0x00 && buf[2]==0x01 && buf[3]==0x00)
             return fmt("ico",  Category::Image, "image/x-icon");
+        // PSD — Adobe Photoshop
+        if (buf[0]=='8' && buf[1]=='B' && buf[2]=='P' && buf[3]=='S')
+            return fmt("psd",  Category::Image, "image/vnd.adobe.photoshop");
 
         // ── Video / Audio ─────────────────────────────────────────────────────
         // MP4/M4A/MOV — ftyp box
@@ -237,6 +240,7 @@ private:
         reg("hdr",  Category::Image, "image/vnd.radiance");
         reg("tga",  Category::Image, "image/x-tga");
         reg("ico",  Category::Image, "image/x-icon");
+        reg("psd",  Category::Image, "image/vnd.adobe.photoshop");
         reg("svg",  Category::Image, "image/svg+xml");
         reg("raw",  Category::Image, "image/x-raw");
         reg("cr2",  Category::Image, "image/x-canon-cr2");
@@ -254,8 +258,6 @@ private:
         reg("wmv",  Category::Video, "video/x-ms-wmv");
         reg("m4v",  Category::Video, "video/x-m4v");
         reg("3gp",  Category::Video, "video/3gpp");
-        reg("ogv",  Category::Video, "video/ogg");
-        reg("ts",   Category::Video, "video/mp2t");
         reg("vob",  Category::Video, "video/dvd");
         reg("rmvb", Category::Video, "video/x-pn-realvideo");
 
@@ -268,7 +270,6 @@ private:
         reg("opus", Category::Audio, "audio/opus");
         reg("m4a",  Category::Audio, "audio/mp4");
         reg("wma",  Category::Audio, "audio/x-ms-wma");
-        reg("aiff", Category::Audio, "audio/aiff");
         reg("caf",  Category::Audio, "audio/x-caf");
 
         // ── 3D Models ─────────────────────────────────────────────────────────
@@ -281,8 +282,6 @@ private:
         reg("ply",  Category::Model3D, "model/ply");
         reg("3ds",  Category::Model3D, "model/x-3ds");
         reg("blend", Category::Model3D, "model/blend");
-        reg("usd",  Category::Model3D, "model/vnd.usd");
-        reg("usdz", Category::Model3D, "model/vnd.usdz+zip");
 
         // ── Archives ──────────────────────────────────────────────────────────
         reg("zip",  Category::Archive, "application/zip");
@@ -312,6 +311,7 @@ private:
 
         // ── Documents ─────────────────────────────────────────────────────────
         reg("pdf",  Category::Document, "application/pdf");
+        reg("ai",   Category::Document, "application/vnd.adobe.illustrator");
         reg("docx", Category::Document, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         reg("doc",  Category::Document, "application/msword");
         reg("odt",  Category::Document, "application/vnd.oasis.opendocument.text");
@@ -360,6 +360,9 @@ private:
         targets("avif", {"png","jpg","webp","ico"});
         targets("ico",  {"png","jpg","webp","bmp","tiff","gif"});
         targets("tga",  {"png","jpg","webp","bmp","ico"});
+        targets("exr",  {"png","jpg","webp","tiff","bmp"});
+        targets("hdr",  {"png","jpg","webp","tiff","bmp","exr"});
+        targets("psd",  {"png","jpg","webp","tiff","bmp"});
         targets("svg",  {"png","jpg","webp","ico"});
         targets("raw",  {"jpg","png","tiff","webp"});
         targets("cr2",  {"jpg","png","tiff","webp"});
@@ -430,6 +433,7 @@ private:
         targets("odt",  {"pdf","docx","doc","rtf","txt","html"});
         targets("rtf",  {"pdf","docx","odt","txt"});
         targets("pdf",  {"odt","txt","html","png","jpg","webp"});
+        targets("ai",   {"png","jpg","webp","pdf"});
         targets("xlsx", {"pdf","ods","csv","xls"});
         targets("xls",  {"pdf","xlsx","ods","csv"});
         targets("ods",  {"pdf","xlsx","xls","csv"});

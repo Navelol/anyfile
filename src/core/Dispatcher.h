@@ -232,7 +232,7 @@ private:
         if (inCat == Category::Model3D || outCat == Category::Model3D)
             return ModelConverter::convert(job);
 
-        if (job.inputFormat.ext == "pdf" && outCat == Category::Image)
+        if ((job.inputFormat.ext == "pdf" || job.inputFormat.ext == "ai") && outCat == Category::Image)
             return PdfRenderer::convert(job);
 
         if (inCat == Category::Image  || inCat == Category::Video  || inCat == Category::Audio ||

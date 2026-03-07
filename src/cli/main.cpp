@@ -82,13 +82,13 @@ static void printUsage() {
 static void printFormats() {
     struct Group { std::string name; std::vector<std::string> exts; };
     std::vector<Group> groups = {
-        { "Images",    {"png","jpg","webp","bmp","tiff","gif","heic","avif","exr","tga","svg"} },
-        { "Video",     {"mp4","mov","avi","mkv","webm","flv","wmv","ogv"} },
+        { "Images",    {"png","jpg","webp","bmp","tiff","gif","heic","avif","exr","hdr","psd","tga","svg"} },
+        { "Video",     {"mp4","mov","avi","mkv","webm","flv","wmv","vob"} },
         { "Audio",     {"mp3","wav","flac","aac","ogg","opus","m4a"} },
-        { "3D",        {"fbx","obj","glb","gltf","stl","dae","ply","3ds","usd"} },
+        { "3D",        {"fbx","obj","glb","gltf","stl","dae","ply","3ds"} },
         { "Archives",  {"zip","tar","gz","bz2","xz","7z","rar","zst"} },
         { "Data",      {"json","xml","yaml","csv","tsv","toml"} },
-        { "Documents", {"pdf","docx","odt","rtf","xlsx","pptx","html","md"} },
+        { "Documents", {"pdf","ai","docx","odt","rtf","xlsx","pptx","html","md"} },
         { "Ebooks",    {"epub","mobi","azw3","fb2","djvu"} },
     };
 
