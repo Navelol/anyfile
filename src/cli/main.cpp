@@ -11,6 +11,7 @@
 
 #include "../core/Dispatcher.h"
 #include "../core/FormatRegistry.h"
+#include "../core/ToolPaths.h"
 #include "ArgParser.h"
 
 namespace fs = std::filesystem;
@@ -362,6 +363,7 @@ int main(int argc, char* argv[]) {
         if (GetConsoleMode(hOut, &mode))
             SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     #endif
+    converter::ToolPaths::init();
     printBanner();
 
     if (argc < 2) {

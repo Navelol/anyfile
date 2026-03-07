@@ -6,8 +6,10 @@
 #include <QQuickStyle>
 
 #include "ConverterBridge.h"
+#include "../core/ToolPaths.h"
 
 int main(int argc, char* argv[]) {
+    converter::ToolPaths::init();
     QQuickStyle::setStyle("Basic");
     QApplication app(argc, argv);
     app.setApplicationName("Anyfile");

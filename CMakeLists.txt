@@ -67,3 +67,9 @@ message(STATUS "│  Assimp       : ${assimp_VERSION}")
 message(STATUS "│  nlohmann-json: submodule             │")
 message(STATUS "└──────────────────────────────────────────┘")
 message(STATUS "")
+
+# ── CMPack ────────────────────────────────────────────────────────────
+include(CPack)
+set(CPACK_GENERATOR "ZIP;NSIS;TGZ;DEB")
+set(CPACK_PACKAGE_NAME "everyfile")
+set(CPACK_PACKAGE_VERSION_MAJOR 1)
