@@ -28,6 +28,9 @@ Item {
     }
     property var _folderCategories: []
 
+    // -- File mode output dir --------------------------------------------------
+    property string fileOutDir: ""   // empty = same dir as each input file
+
     // -- Folder mode state -----------------------------------------------------
     property string folderPath:         ""
     property string _lastScannedPath:   ""    // tracks which path rules/categories belong to
@@ -42,6 +45,13 @@ Item {
     ListModel { id: formatRulesModel }
     property string folderDefaultExt: ""
     onFolderDefaultExtChanged: recomputeFolderStats()
+
+    Connections {
+        target: formatRulesModel
+        function onRowsInserted() { panel.recomputeFolderStats() }
+        function onRowsRemoved()  { panel.recomputeFolderStats() }
+        function onModelReset()   { panel.recomputeFolderStats() }
+    }
 
     // -- Results model (shared batch + folder) ---------------------------------
     ListModel { id: batchResults }
@@ -79,8 +89,10 @@ Item {
             return
         }
         var rules = []
-        for (var i = 0; i < formatRulesModel.count; i++)
-            rules.push(formatRulesModel.get(i))
+        for (var i = 0; i < formatRulesModel.count; i++) {
+            var item = formatRulesModel.get(i)
+            rules.push({ fromExt: item.fromExt, toExt: item.toExt })
+        }
         var stats = bridge.computeFolderStats(panel.folderFiles, rules, panel.folderDefaultExt)
         panel._folderConvertCount = stats.convertCount
         panel._folderCanConvert   = stats.canConvert
@@ -294,15 +306,16 @@ Item {
         if (mode === 0) {
             var specs = buildFilesJobSpecs()
             if (specs.length === 0) return
+            var fileOutDirVal = panel.fileOutDir
             if (!advPanel.forceOverwrite) {
-                var collisions = bridge.wouldOverwriteDetailed(specs, "")
+                var collisions = bridge.wouldOverwriteDetailed(specs, fileOutDirVal)
                 if (collisions.length > 0) {
-                    overwriteDialog.setup(collisions, specs, "", opts)
+                    overwriteDialog.setup(collisions, specs, fileOutDirVal, opts)
                     overwriteDialog.open(); return
                 }
             }
             batchResults.clear()
-            bridge.convertBatchDetailed(specs, "", opts)
+            bridge.convertBatchDetailed(specs, fileOutDirVal, opts)
         } else {
             var fSpecs = buildFolderJobSpecs()
             if (fSpecs.length === 0) return
@@ -440,6 +453,11 @@ Item {
             panel._folderCanConvert = false
         }
         bridge.scanFolderAsync(dir, panel.folderRecurse, 100000)
+    }
+
+    function openFileOutDirPicker() {
+        var dir = bridge.pickFolder("Choose output folder")
+        if (dir !== "") panel.fileOutDir = dir
     }
 
     function openOutDirPicker() {
@@ -774,6 +792,58 @@ Item {
                         height: 4; orientation: Qt.Horizontal; flickable: overrideFlick
                     }
                 }
+            }
+
+            // Output location row (file mode)
+            RowLayout {
+                visible: batchModel.count > 0
+                Layout.fillWidth: true
+                spacing: 8
+
+                Text {
+                    text: "output"
+                    font.pixelSize: 10; font.bold: true; font.family: root.appFont
+                    color: root.textDim; Layout.alignment: Qt.AlignVCenter
+                }
+
+                Rectangle {
+                    width: fmSameLbl.implicitWidth + 20; height: 28; radius: 7
+                    color: panel.fileOutDir === "" ? root.accent : (fmSameMa.containsMouse ? root.border : root.surface)
+                    border.color: panel.fileOutDir === "" ? root.accent : root.border; border.width: 1
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Text { id: fmSameLbl; anchors.centerIn: parent; text: "same location"
+                        font.pixelSize: 11; font.family: root.appFont
+                        color: panel.fileOutDir === "" ? "#0e0e0f" : root.textMid }
+                    MouseArea { id: fmSameMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor; onClicked: panel.fileOutDir = "" }
+                }
+
+                Rectangle {
+                    width: fmChooseInner.implicitWidth + 20; height: 28; radius: 7
+                    color: panel.fileOutDir !== "" ? root.accent : (fmChooseMa.containsMouse ? root.border : root.surface)
+                    border.color: panel.fileOutDir !== "" ? root.accent : root.border; border.width: 1
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    Row {
+                        id: fmChooseInner; anchors.centerIn: parent; spacing: 5
+                        TintedIcon {
+                            visible: panel.fileOutDir !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 13; height: 13
+                            source: "qrc:/icons/folder.svg"
+                            color: panel.fileOutDir !== "" ? "#0e0e0f" : root.textMid
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: panel.fileOutDir !== "" ? panel.fileOutDir.split("/").pop() : "choose folder..."
+                            font.pixelSize: 11; font.family: root.appFont
+                            color: panel.fileOutDir !== "" ? "#0e0e0f" : root.textMid
+                        }
+                    }
+                    MouseArea { id: fmChooseMa; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor; onClicked: panel.openFileOutDirPicker() }
+                }
+
+                Item { Layout.fillWidth: true }
             }
 
             // File list
