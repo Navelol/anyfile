@@ -92,6 +92,32 @@ cp "$ROOT_DIR/src/gui/resources/icons/app.png" "$APPDIR/anyfile.png"
 cp "$ROOT_DIR/linux/anyfile.desktop" "$APPDIR/usr/share/applications/anyfile.desktop"
 cp "$ROOT_DIR/linux/anyfile.desktop" "$APPDIR/anyfile.desktop"
 
+# ── Ensure optional Qt plugin dependencies are present ────────────────────────
+# kimg_heif.so (deployed by linuxdeploy-plugin-qt) requires libheif.so.1.
+# If it's missing the qt plugin exits with code 1, so install it first.
+if ! ldconfig -p 2>/dev/null | grep -q 'libheif\.so'; then
+    echo "Installing missing dependency: libheif (required by Qt kimg_heif plugin)..."
+    if command -v pacman &>/dev/null; then
+        sudo pacman -Sy --noconfirm libheif || {
+            echo "WARNING: Could not install libheif — removing kimg_heif.so to avoid build failure."
+            _HEIF_SKIP=1
+        }
+    elif command -v apt-get &>/dev/null; then
+        sudo apt-get install -y libheif1 || _HEIF_SKIP=1
+    else
+        echo "WARNING: Cannot auto-install libheif — removing kimg_heif.so to avoid build failure."
+        _HEIF_SKIP=1
+    fi
+fi
+
+# If libheif couldn't be installed, temporarily hide the plugin so linuxdeploy
+# doesn't try to deploy it.  We restore it afterwards.
+_HEIF_PLUGIN="$(find /usr/lib/qt6/plugins/imageformats -name 'kimg_heif.so' 2>/dev/null | head -1)"
+if [ "${_HEIF_SKIP:-0}" = "1" ] && [ -n "$_HEIF_PLUGIN" ]; then
+    sudo mv "$_HEIF_PLUGIN" "${_HEIF_PLUGIN}.bak"
+    trap 'sudo mv "${_HEIF_PLUGIN}.bak" "$_HEIF_PLUGIN" 2>/dev/null || true' EXIT
+fi
+
 # ── Bundle Qt and system libs via linuxdeploy ─────────────────────────────────
 echo "Bundling dependencies..."
 mkdir -p "$DIST_DIR"
@@ -99,7 +125,17 @@ mkdir -p "$DIST_DIR"
 # Tell linuxdeploy-plugin-qt where to find QML files compiled into the binary
 # (QML is compiled in via qt_add_qml_module so no external QML dir needed)
 export QML_SOURCES_PATHS="$ROOT_DIR/src/gui/qml"
-export QMAKE="$(which qmake6 2>/dev/null || which qmake)"
+
+# Point to the Qt6-specific qmake so linuxdeploy-plugin-qt can locate
+# qmlimportscanner (lives at ../qmlimportscanner relative to the bin/ dir).
+export QMAKE="${QMAKE:-/usr/lib/qt6/bin/qmake}"
+
+# Allow nested AppImage (plugin) to run without host FUSE support.
+export APPIMAGE_EXTRACT_AND_RUN=1
+
+# linuxdeploy's bundled strip is too old to handle SHT_RELR (.relr.dyn)
+# sections present in modern system libraries — disable stripping entirely.
+export NO_STRIP=1
 
 # Run linuxdeploy with Qt plugin
 "$LINUXDEPLOY" \

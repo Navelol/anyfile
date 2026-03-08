@@ -34,3 +34,10 @@ tests/ebooks/
 tests/archives/
 tests/data/
 tests/documents/
+
+tests/
+# Build outputs / distribution
+dist/
+
+# Qt Creator user-specific files
+.qtcreator/
