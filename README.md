@@ -1,126 +1,188 @@
-# converter
+# Anyfile
 
-Universal file converter — CLI + GUI (coming soon).  
-Written in C++20. Uses FFmpeg, Assimp, and more under the hood.
+A universal file converter that handles **100+ formats** across images, video, audio, 3D models, archives, documents, ebooks, and data formats. Ships as both a CLI tool and a Qt6 GUI app.
 
----
-
-## Project Structure
-
-```
-converter/
-├── core/               ← shared conversion logic (linked by CLI + GUI)
-│   ├── Types.h         ← ConversionResult, ConversionJob, Format
-│   ├── FormatRegistry.h← format detection + target mapping
-│   ├── Dispatcher.h    ← routes jobs to the right converter
-│   ├── MediaConverter.h← FFmpeg (images, video, audio)
-│   └── ModelConverter.h← Assimp (3D formats)
-├── cli/
-│   └── main.cpp        ← terminal interface
-├── gui/                ← Qt6 GUI (not yet implemented)
-├── scripts/
-│   ├── build_linux.sh
-│   └── build_windows.bat
-└── CMakeLists.txt
-```
+Built in C++20 with FFmpeg, Assimp, libarchive, LibreOffice, Pandoc, and Calibre under the hood.
 
 ---
 
-## Dependencies
+## Supported Formats
 
-### Linux (apt)
+| Category | Formats |
+|----------|---------|
+| **Images** | PNG, JPG, WebP, BMP, TIFF, GIF, HEIC, AVIF, EXR, HDR, PSD, TGA, SVG, ICO, RAW, CR2, NEF, ARW, DNG |
+| **Video** | MP4, MOV, AVI, MKV, WebM, FLV, WMV, VOB, 3GP, M4V |
+| **Audio** | MP3, WAV, FLAC, AAC, OGG, Opus, M4A, CAF, WMA |
+| **3D Models** | FBX, OBJ, GLB, GLTF, STL, DAE, PLY, 3DS |
+| **Archives** | ZIP, TAR, GZ, BZ2, XZ, 7Z, RAR*, ZSTD, TGZ, TBZ2, TXZ, LZ4, LZMA |
+| **Documents** | DOCX, DOC, ODT, XLSX, XLS, ODS, PPTX, PPT, ODP, PDF, TXT, RTF, HTML, MD, RST, TEX |
+| **Ebooks** | EPUB, MOBI, AZW3, AZW, FB2, DJVU, LIT |
+| **Data** | JSON, XML, YAML, CSV, TSV, TOML, INI, ENV |
+
+\* RAR is read-only (extract/convert from, cannot create)
+
+---
+
+## Installation
+
+### Download
+
+Grab the latest release from the [Releases](https://github.com/Navelol/everyfile/releases) page:
+
+- **Windows** — `Anyfile-windows-x86_64.zip` (extract and run)
+- **Linux** — `Anyfile-x86_64.AppImage` (chmod +x and run)
+
+### Build from Source
+
+#### Dependencies
+
+<details>
+<summary><b>Ubuntu / Debian</b></summary>
+
 ```bash
-sudo apt install \
-    cmake ninja-build build-essential \
+sudo apt install cmake ninja-build build-essential pkg-config \
     libavcodec-dev libavformat-dev libavutil-dev \
     libswscale-dev libswresample-dev \
-    libassimp-dev \
-    libarchive-dev
+    libassimp-dev libarchive-dev libmagic-dev \
+    qt6-base-dev qt6-declarative-dev libqt6svg6-dev
 ```
+</details>
 
-> For GUI support also install: `sudo apt install qt6-base-dev qt6-declarative-dev`
+<details>
+<summary><b>Arch / CachyOS</b></summary>
 
-### Arch / CachyOS (pacman)
 ```bash
-sudo pacman -S --needed \
-    cmake ninja base-devel \
-    ffmpeg \
-    assimp \
-    libarchive
+sudo pacman -S --needed cmake ninja base-devel \
+    ffmpeg assimp libarchive file \
+    qt6-base qt6-declarative qt6-svg
 ```
+</details>
 
-> For GUI support also install: `sudo pacman -S qt6-base qt6-declarative`
+<details>
+<summary><b>Windows (MSYS2 MinGW64)</b></summary>
 
-### Windows (vcpkg)
 ```bash
-vcpkg install ffmpeg assimp
+pacman -S --needed \
+    mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-gcc \
+    mingw-w64-x86_64-ffmpeg mingw-w64-x86_64-assimp \
+    mingw-w64-x86_64-libarchive mingw-w64-x86_64-file \
+    mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-declarative mingw-w64-x86_64-qt6-svg
 ```
+</details>
 
----
+#### Build Commands
 
-## Build
-
-### Linux
 ```bash
-chmod +x scripts/build_linux.sh
-./scripts/build_linux.sh              # CLI only (default)
-./scripts/build_linux.sh --gui        # CLI + Qt6 GUI
-./scripts/build_linux.sh --debug      # debug build
-```
+# Linux — CLI only
+./scripts/build_linux.sh
 
-Binary is output to `build/linux/bin/anyfile`.
-
-### Windows
-```bat
-scripts\build_windows.bat
-```
-
-### With GUI (Qt6 required)
-```bash
+# Linux — CLI + GUI
 ./scripts/build_linux.sh --gui
-# or manually:
-cmake -S . -B build/linux -DBUILD_GUI=ON && cmake --build build/linux --parallel
+
+# Linux — Build AppImage
+./scripts/build_linux.sh --appimage
+
+# Windows
+powershell scripts/build_windows.ps1 -Gui
 ```
+
+Output: `build/{linux,windows}/bin/`
 
 ---
 
 ## CLI Usage
 
 ```bash
-# Convert by specifying output file
-converter video.mp4 audio.mp3
-converter model.fbx model.glb
-converter image.png output.webp
+# Single file conversion
+anyfile video.mp4 audio.mp3
+anyfile photo.heic jpg
+anyfile model.fbx model.glb
 
-# Convert using --to flag (output in same directory)
-converter photo.heic --to jpg
-converter document.wav --to flac
+# Batch conversion (entire folder)
+anyfile ./videos/ mp3                      # convert all to mp3
+anyfile ./media/ mp4:mp3,avi:mkv           # format mapping
+anyfile ./media/ mp3 ./output/ -r          # recursive + output dir
 
-# List all supported formats
-converter --formats
-
-# Help
-converter --help
+# Info
+anyfile --formats                          # list all supported formats
+anyfile --help
 ```
 
+### Encoding Options
+
+Control video/audio encoding when converting media:
+
+```bash
+# Codec & quality
+anyfile input.mp4 output.mkv --vcodec libx265 --crf 20
+anyfile input.wav output.mp3 --abitrate 320k
+
+# Resolution & framerate
+anyfile input.mov output.mp4 --res 1920x1080 --fps 30
+
+# Variable bitrate (2-pass)
+anyfile input.mp4 output.webm --vcodec libvpx-vp9 --vbr2-target 10M --vbr2-max 15M
+```
+
+### Batch Options
+
+| Flag | Description |
+|------|-------------|
+| `-r, --recursive` | Process subdirectories |
+| `-f, --force` | Overwrite existing files |
+| `--list` | Dry run (list what would be converted) |
+
 ---
 
-## Adding a New Converter
+## GUI
 
-1. Create `core/YourConverter.h` with a static `convert(const ConversionJob&)` method
-2. Add a route in `core/Dispatcher.h` in the `route()` function
-3. Register the formats and targets in `core/FormatRegistry.h`
+The Qt6 GUI provides drag-and-drop file conversion with:
+
+- **Format browser** grouped by category with search/filter
+- **Batch folder mode** with per-file format mapping rules
+- **Advanced encoding panel** with codec presets (H.264, H.265, VP9, AV1, etc.)
+- **Real-time progress** with file size and timing info
+- Async, cancellable conversions
 
 ---
 
-## Roadmap
+## Architecture
 
-- [x] Project scaffold
-- [x] FFmpeg media conversion (video, audio, image)
-- [x] Assimp 3D conversion
-- [x] CLI with progress bar
-- [ ] Data format conversion (JSON ↔ XML ↔ YAML ↔ CSV)
-- [ ] Archive conversion (libarchive)
-- [ ] Qt6 GUI
-- [ ] Batch conversion
-- [ ] Drag and drop (GUI)
+```
+src/
+├── core/                    ← shared conversion library
+│   ├── FormatRegistry.h     ← format detection (magic bytes + libmagic + extension)
+│   ├── Dispatcher.h         ← routes jobs, atomic writes, disk space checks
+│   ├── MediaConverter.h     ← FFmpeg (images, video, audio)
+│   ├── ModelConverter.h     ← Assimp (3D models)
+│   ├── DataConverter.h      ← JSON pivot (JSON, XML, YAML, CSV, TOML, INI, ENV)
+│   ├── ArchiveConverter.h   ← libarchive (extract + repack)
+│   ├── DocumentConverter.h  ← LibreOffice + Pandoc + Calibre
+│   └── PdfRenderer.h        ← PDF → images via poppler
+├── cli/                     ← terminal interface
+└── gui/                     ← Qt6 QML interface
+```
+
+All conversions are **atomic** — output goes to a temp file first, renamed on success, cleaned up on failure. Disk space is checked before conversion begins.
+
+---
+
+## External Tools
+
+Some format categories require external tools at runtime:
+
+| Tool | Used For | Required? |
+|------|----------|-----------|
+| FFmpeg | Images, video, audio | Yes (core) |
+| LibreOffice | Office documents, PDF | For document conversion |
+| Pandoc | Markdown, HTML, RST, TeX | For text/markup conversion |
+| Calibre | Ebook formats | For ebook conversion |
+| poppler-utils | PDF → image rendering | For PDF image extraction |
+
+On Windows, these can be bundled in a `tools/` directory alongside the binary. On Linux, install them from your package manager.
+
+---
+
+## License
+
+MIT
