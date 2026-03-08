@@ -355,6 +355,7 @@ private:
         targets("webp", {"png","jpg","bmp","tiff","gif","ico"});
         targets("bmp",  {"png","jpg","webp","tiff","ico"});
         targets("tiff", {"png","jpg","webp","bmp","ico"});
+        targets("tif",  {"png","jpg","webp","bmp","ico"});
         targets("gif",  {"png","jpg","webp","mp4","webm"});
         targets("heic", {"png","jpg","webp","ico"});
         targets("avif", {"png","jpg","webp","ico"});

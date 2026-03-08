@@ -41,4 +41,7 @@ dist/
 
 # Qt Creator user-specific files
 .qtcreator/
+
+# Release files
 website-content.txt
+releasenote.txt
