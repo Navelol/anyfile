@@ -4,6 +4,8 @@ A universal file converter that handles **100+ formats** across images, video, a
 
 Built in C++20 with FFmpeg, Assimp, libarchive, LibreOffice, Pandoc, and Calibre under the hood.
 
+![anyfile_gui_Q91GmX8DXI](https://github.com/user-attachments/assets/c41c8b6c-a2bf-40a7-87f0-8019cab607dd)
+
 ---
 
 ## Supported Formats
