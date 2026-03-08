@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -32,17 +32,27 @@ jobs:
             libarchive-dev \
             libmagic-dev \
             libheif-dev \
-            qt6-base-dev qt6-declarative-dev \
-            libqt6svg6-dev \
-            qt6-base-private-dev \
             libgl1-mesa-dev \
             fuse libfuse2 \
             curl
+
+      - name: Install Qt 6.6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.*'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: 'qtquick3d'
+          cache: true
 
       - name: Build AppImage
         run: |
           chmod +x scripts/build_appimage.sh
           bash scripts/build_appimage.sh
+        env:
+          # install-qt-action sets QT_ROOT_DIR; point qmake there for linuxdeploy-plugin-qt
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4

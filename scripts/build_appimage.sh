@@ -58,10 +58,20 @@ fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo "Configuring..."
+
+# If Qt6_DIR is set (e.g. by jurplel/install-qt-action in CI), pass it to CMake
+CMAKE_QT_ARGS=()
+if [ -n "${Qt6_DIR:-}" ]; then
+    CMAKE_QT_ARGS+=("-DQt6_DIR=$Qt6_DIR")
+elif [ -n "${QT_ROOT_DIR:-}" ]; then
+    CMAKE_QT_ARGS+=("-DQt6_DIR=$QT_ROOT_DIR/lib/cmake/Qt6")
+fi
+
 cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -DBUILD_GUI=ON \
-    -DBUILD_TESTS="$BUILD_TESTS"
+    -DBUILD_TESTS="$BUILD_TESTS" \
+    "${CMAKE_QT_ARGS[@]}"
 
 echo "Building..."
 cmake --build "$BUILD_DIR" --parallel "$(nproc)"
