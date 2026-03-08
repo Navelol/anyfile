@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Anyfile
+GenericName=File Converter
+Comment=Universal file converter
+Exec=anyfile_gui %F
+Icon=anyfile
+Terminal=false
+Type=Application
+Categories=Utility;FileTools;
+MimeType=image/png;image/jpeg;image/gif;image/webp;image/bmp;image/tiff;image/svg+xml;video/mp4;video/x-matroska;video/webm;video/avi;video/quicktime;video/x-flv;audio/mpeg;audio/ogg;audio/wav;audio/flac;audio/aac;audio/opus;application/pdf;application/zip;application/x-tar;application/x-7z-compressed;application/x-rar-compressed;model/obj;model/gltf+json;model/gltf-binary;
+StartupNotify=true
+StartupWMClass=anyfile_gui
