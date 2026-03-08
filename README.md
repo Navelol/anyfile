@@ -1,4 +1,5 @@
-# Anyfile
+<img width="300" height="" alt="Asset 1" src="https://github.com/user-attachments/assets/686d92c8-d81b-4cce-b46b-acecb24cbed9" />
+
 
 A universal file converter that handles **100+ formats** across images, video, audio, 3D models, archives, documents, ebooks, and data formats. Ships as both a CLI tool and a Qt6 GUI app.
 
