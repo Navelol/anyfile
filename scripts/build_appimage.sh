@@ -148,9 +148,16 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 export NO_STRIP=1
 
 # Run linuxdeploy with Qt plugin
+# Pass both binaries so linuxdeploy bundles deps for both (e.g. FFmpeg from anyfile CLI)
+EXTRA_EXECUTABLES=()
+if [ -f "$APPDIR/usr/bin/anyfile" ]; then
+    EXTRA_EXECUTABLES+=(--executable "$APPDIR/usr/bin/anyfile")
+fi
+
 "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/anyfile_gui" \
+    "${EXTRA_EXECUTABLES[@]}" \
     --desktop-file "$APPDIR/anyfile.desktop" \
     --icon-file "$APPDIR/anyfile.png" \
     --plugin qt \
@@ -177,7 +184,7 @@ fi
 
 # ── Bundle libmagic if needed (not always auto-detected) ─────────────────────
 LIBMAGIC="$(ldconfig -p 2>/dev/null | grep 'libmagic\.so' | awk '{print $NF}' | head -1)"
-if [ -n "$LIBMAGIC" ] && [ -f "$APPDIR/usr/lib" ]; then
+if [ -n "$LIBMAGIC" ] && [ -d "$APPDIR/usr/lib" ]; then
     cp "$LIBMAGIC" "$APPDIR/usr/lib/" 2>/dev/null || true
     # Also copy magic database
     if [ -d "/usr/share/misc" ] && [ -f "/usr/share/misc/magic.mgc" ]; then
