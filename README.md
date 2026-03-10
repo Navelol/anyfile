@@ -14,7 +14,7 @@ Built in C++20 with FFmpeg, Assimp, libarchive, LibreOffice, Pandoc, and Calibre
 | Category | Formats |
 |----------|---------|
 | **Images** | PNG, JPG, WebP, BMP, TIFF, GIF, HEIC, AVIF, EXR, HDR, PSD, TGA, SVG, ICO, RAW, CR2, NEF, ARW, DNG |
-| **Video** | MP4, MOV, AVI, MKV, WebM, FLV, WMV, VOB, 3GP, M4V |
+| **Video** | MP4, MOV, AVI, MKV, WebM, FLV, WMV, VOB, 3GP, M4V, TS |
 | **Audio** | MP3, WAV, FLAC, AAC, OGG, Opus, M4A, CAF, WMA |
 | **3D Models** | FBX, OBJ, GLB, GLTF, STL, DAE, PLY, 3DS |
 | **Archives** | ZIP, TAR, GZ, BZ2, XZ, 7Z, RAR*, ZSTD, TGZ, TBZ2, TXZ, LZ4, LZMA |
@@ -167,6 +167,10 @@ src/
 ```
 
 All conversions are **atomic** — output goes to a temp file first, renamed on success, cleaned up on failure. Disk space is checked before conversion begins.
+
+Converting a video or GIF to an image format (PNG, JPG, WebP, etc.) extracts the full frame sequence and bundles it into a `.zip`, matching the behavior of PDF → image exports.
+
+Path validation blocks conversions to/from sensitive OS directories. An optional sandbox mode restricts all I/O to a configured root directory for server deployments.
 
 ---
 
