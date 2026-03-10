@@ -98,7 +98,16 @@ private:
         return convertWithLibreOffice(job);
     }
 
+    static bool isPresentation(const std::string& ext) {
+        return ext == "pptx" || ext == "ppt" || ext == "odp";
+    }
+
+    static bool isSpreadsheet(const std::string& ext) {
+        return ext == "xlsx" || ext == "xls" || ext == "ods" || ext == "csv";
+    }
+
     static std::string convertWithLibreOffice(const ConversionJob& job) {
+        const std::string& inExt  = job.inputFormat.ext;
         const std::string& outExt = job.outputFormat.ext;
 
         fs::path tempDir = makeTempName("anyfile_doc_");
@@ -108,6 +117,18 @@ private:
         if (filter.empty()) {
             fs::remove_all(tempDir);
             return "Unsupported document output format: ." + outExt;
+        }
+
+        // LibreOffice requires an app-specific PDF export filter; the generic
+        // "pdf" filter only works for Writer documents and will fail for
+        // presentations or spreadsheets.
+        if (outExt == "pdf") {
+            if (isPresentation(inExt))
+                filter = "pdf:impress_pdf_Export";
+            else if (isSpreadsheet(inExt))
+                filter = "pdf:calc_pdf_Export";
+            else
+                filter = "pdf:writer_pdf_Export";
         }
 
         int rc = Process::runCancellable(SOFFICE_BIN, {
