@@ -258,13 +258,13 @@ jobs:
           }
 
           # Launcher batch file — adds tools subdirs to PATH so soffice/pandoc/etc are found
-          $LauncherContent = @'
-@echo off
-set MAGIC=%~dp0magic.mgc
-set PATH=%~dp0tools\ffmpeg;%~dp0tools\pandoc;%~dp0tools\poppler\bin;%~dp0tools\calibre;%~dp0tools\libreoffice\program;%PATH%
-start "" "%~dp0anyfile_gui.exe" %*
-'@
-          Set-Content -Path (Join-Path $DistDir "everyfile.bat") -Value $LauncherContent -Encoding ASCII
+          $launcher = @(
+              '@echo off',
+              'set MAGIC=%~dp0magic.mgc',
+              'set PATH=%~dp0tools\ffmpeg;%~dp0tools\pandoc;%~dp0tools\poppler\bin;%~dp0tools\calibre;%~dp0tools\libreoffice\program;%PATH%',
+              'start "" "%~dp0anyfile_gui.exe" %*'
+          )
+          $launcher | Set-Content (Join-Path $DistDir "everyfile.bat") -Encoding ASCII
 
           # Compress
           mkdir dist -Force | Out-Null
