@@ -2,7 +2,10 @@
 
 #include "Types.h"
 #include "Subprocess.h"
+#include <archive.h>
+#include <archive_entry.h>
 #include <chrono>
+#include <fstream>
 #include <unordered_set>
 
 namespace converter {
@@ -19,6 +22,8 @@ public:
 
         if (outExt == "gif") {
             result = convertGif(job);
+        } else if (isAnimatedInput(job) && imageExts().count(outExt)) {
+            result = convertToSequence(job);
         } else if (job.twoPass && job.videoBitrate) {
             // VBR 2-pass encode
             result = convertTwoPass(job);
@@ -232,17 +237,122 @@ private:
         }
         if (job.framerate) { args.push_back("-r"); args.push_back(*job.framerate); }
 
-        // For image outputs from animated sources (GIF, video → PNG/JPG/etc.),
-        // limit to one frame so ffmpeg writes a single file instead of a sequence.
-        static const std::unordered_set<std::string> imageExts = {
-            "png","jpg","jpeg","webp","bmp","tiff","tif","avif","tga","exr","hdr"
-        };
-        if (imageExts.count(outExt) && !job.framerate) {
+        // For static image outputs (non-animated input), limit to one frame.
+        // Animated → image is handled by convertToSequence() before we get here.
+        if (imageExts().count(outExt)) {
             args.push_back("-frames:v"); args.push_back("1");
         }
 
         args.push_back(job.outputPath.string());
         return args;
+    }
+
+    static const std::unordered_set<std::string>& imageExts() {
+        static const std::unordered_set<std::string> s = {
+            "png","jpg","jpeg","webp","bmp","tiff","tif","avif","tga","exr","hdr"
+        };
+        return s;
+    }
+
+    static bool isAnimatedInput(const ConversionJob& job) {
+        return job.inputFormat.category == Category::Video
+            || job.inputFormat.ext == "gif";
+    }
+
+    static ConversionResult convertToSequence(const ConversionJob& job) {
+        const std::string& outExt = job.outputFormat.ext;
+
+        if (job.onProgress) job.onProgress(0.1f, "Extracting frames...");
+
+        fs::path tempDir = makeTempName("anyfile_seq_");
+        fs::create_directories(tempDir);
+
+        fs::path framePattern = tempDir / ("frame%04d." + outExt);
+
+        std::vector<std::string> args = { "-y", "-i", job.inputPath.string() };
+
+        if (job.resolution) {
+            auto x = job.resolution->find('x');
+            if (x != std::string::npos) {
+                args.push_back("-vf");
+                args.push_back("scale=" + job.resolution->substr(0, x)
+                              + ":" + job.resolution->substr(x + 1));
+            }
+        }
+        if (job.framerate) { args.push_back("-r"); args.push_back(*job.framerate); }
+
+        args.push_back(framePattern.string());
+
+        int rc = Process::runCancellable("ffmpeg", args, job.cancelFlag);
+        if (rc == -2) { fs::remove_all(tempDir); return ConversionResult::cancelled(); }
+        if (rc != 0)  { fs::remove_all(tempDir); return ConversionResult::err("FFmpeg frame extraction failed"); }
+
+        if (job.cancelFlag && job.cancelFlag->load()) {
+            fs::remove_all(tempDir);
+            return ConversionResult::cancelled();
+        }
+
+        std::vector<fs::path> frames;
+        for (auto& entry : fs::directory_iterator(tempDir))
+            if (entry.is_regular_file())
+                frames.push_back(entry.path());
+
+        if (frames.empty()) {
+            fs::remove_all(tempDir);
+            return ConversionResult::err("FFmpeg produced no frames");
+        }
+        std::sort(frames.begin(), frames.end());
+
+        if (job.onProgress) job.onProgress(0.7f, "Packing frames into zip...");
+
+        fs::path zipOut = job.outputPath;
+        zipOut.replace_extension(".zip");
+
+        std::string packErr = packZip(frames, zipOut);
+        fs::remove_all(tempDir);
+
+        if (!packErr.empty())
+            return ConversionResult::err("Failed to create zip: " + packErr);
+
+        auto result = ConversionResult::ok(zipOut);
+        if (job.outputPath.extension() != ".zip") {
+            result.warnings.push_back(
+                "Output is a zip of frame images. Extension changed to .zip "
+                "(requested: " + job.outputPath.extension().string() + ")");
+        }
+        return result;
+    }
+
+    static std::string packZip(const std::vector<fs::path>& files, const fs::path& dest) {
+        struct archive* a = archive_write_new();
+        archive_write_set_format_zip(a);
+
+        if (archive_write_open_filename(a, dest.string().c_str()) != ARCHIVE_OK) {
+            std::string err = archive_error_string(a);
+            archive_write_free(a);
+            return err;
+        }
+
+        for (auto& filePath : files) {
+            struct archive_entry* entry = archive_entry_new();
+            archive_entry_set_pathname(entry, filePath.filename().string().c_str());
+            archive_entry_set_size(entry, fs::file_size(filePath));
+            archive_entry_set_filetype(entry, AE_IFREG);
+            archive_entry_set_perm(entry, 0644);
+
+            archive_write_header(a, entry);
+
+            std::ifstream f(filePath.string(), std::ios::binary);
+            std::vector<char> buf(8192);
+            while ((f.read(buf.data(), buf.size()), f.gcount() > 0))
+                archive_write_data(a, buf.data(), (size_t)f.gcount());
+
+            archive_entry_free(entry);
+        }
+
+        archive_write_close(a);
+        archive_write_free(a);
+        return "";
     }
 };
 
