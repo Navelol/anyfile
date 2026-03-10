@@ -113,24 +113,26 @@ jobs:
       - name: Copy runtime DLLs
         run: |
           BIN=build/windows/bin
-          # Recursively copy all MinGW64 DLLs that our binaries depend on
+          # Recursively copy all MinGW64 DLLs that our binaries depend on.
+          # Uses process substitution (< <(...)) instead of pipe-to-while to
+          # avoid pipefail triggering when grep finds no /mingw64/ matches.
           collect_dlls() {
             local bin="$1"
-            ldd "$bin" 2>/dev/null | grep -i '/mingw64/' | awk '{print $3}' | while read dll; do
+            while IFS= read -r dll; do
               local name
               name=$(basename "$dll")
               if [ -f "$dll" ] && [ ! -f "$BIN/$name" ]; then
                 cp "$dll" "$BIN/"
                 collect_dlls "$BIN/$name"
               fi
-            done
+            done < <(ldd "$bin" 2>/dev/null | grep -i '/mingw64/' | awk '{print $3}' || true)
           }
           for exe in "$BIN"/*.exe; do
-            collect_dlls "$exe"
+            [ -f "$exe" ] && collect_dlls "$exe"
           done
-          # Also scan any DLLs that windeployqt already placed (they have their own deps)
+          # Also scan DLLs that windeployqt already placed (they have their own deps)
           for dll in "$BIN"/*.dll; do
-            collect_dlls "$dll"
+            [ -f "$dll" ] && collect_dlls "$dll"
           done
           # Copy libmagic database file
           cp /mingw64/share/misc/magic.mgc "$BIN/" 2>/dev/null || true
