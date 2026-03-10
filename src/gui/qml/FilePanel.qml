@@ -1283,109 +1283,237 @@ Item {
                 Layout.minimumHeight: 120
                 spacing: 6
 
-                // Section header
+                // Section header: label on the left, scrollable source-ext chips on the right
                 RowLayout {
                     Layout.fillWidth: true; spacing: 8
                     opacity: panel.folderFiles.length > 0 ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
+
                     Text { text: "conversion rules"; font.pixelSize: 10; font.bold: true
                         font.family: root.appFont; color: root.textDim }
-                    Item { Layout.fillWidth: true }
-                    // Source ext quick-add chips
-                    Repeater {
-                        model: panel.folderFiles.length > 0 ? panel.sourcesInFolder() : []
-                        Rectangle {
-                            property bool hasRule: {
-                                for (var i = 0; i < formatRulesModel.count; i++)
-                                    if (formatRulesModel.get(i).fromExt === modelData) return true
-                                return false
-                            }
-                            width: srcChipLbl.implicitWidth + 14; height: 22; radius: 5
-                            color: hasRule ? root.surfaceHi : (srcChipMa.containsMouse ? root.border : root.surface)
-                            border.color: hasRule ? root.accent : root.border; border.width: 1
-                            opacity: hasRule ? 0.5 : 1.0
-                            Text { id: srcChipLbl; anchors.centerIn: parent; text: "." + modelData
-                                font.pixelSize: 9; font.family: root.appFont; color: root.textMid }
-                            ToolTip.visible: srcChipMa.containsMouse; ToolTip.delay: 400
-                            ToolTip.text: hasRule ? "rule exists for ." + modelData : "add rule for ." + modelData
-                            MouseArea {
-                                id: srcChipMa; anchors.fill: parent; hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (!parent.hasRule)
-                                        addRulePopup.openFor(modelData, parent)
+
+                    // Horizontally-scrollable chip strip
+                    Item {
+                        Layout.fillWidth: true; height: 26; clip: true
+
+                        Flickable {
+                            id: srcChipsFlick
+                            anchors.fill: parent
+                            contentWidth: srcChipsRow.implicitWidth
+                            contentHeight: height
+                            flickableDirection: Flickable.HorizontalFlick
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            WheelHandler {
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                onWheel: function(e) {
+                                    var delta = e.angleDelta.x !== 0 ? e.angleDelta.x : e.angleDelta.y
+                                    srcChipsFlick.contentX = Math.max(0,
+                                        Math.min(srcChipsFlick.contentWidth - srcChipsFlick.width,
+                                                 srcChipsFlick.contentX - delta * 0.5))
                                 }
                             }
+
+                            Row {
+                                id: srcChipsRow
+                                y: (parent.height - height) / 2; spacing: 5
+
+                                Repeater {
+                                    model: panel.folderFiles.length > 0 ? panel.sourcesInFolder() : []
+                                    Rectangle {
+                                        property bool hasRule: {
+                                            for (var i = 0; i < formatRulesModel.count; i++)
+                                                if (formatRulesModel.get(i).fromExt === modelData) return true
+                                            return false
+                                        }
+                                        width: srcChipLbl.implicitWidth + 14; height: 22; radius: 5
+                                        color: hasRule ? root.surfaceHi : (srcChipMa.containsMouse ? root.border : root.surface)
+                                        border.color: hasRule ? root.accent : root.border; border.width: 1
+                                        opacity: hasRule ? 0.5 : 1.0
+                                        Text { id: srcChipLbl; anchors.centerIn: parent; text: "." + modelData
+                                            font.pixelSize: 9; font.family: root.appFont; color: root.textMid }
+                                        ToolTip.visible: srcChipMa.containsMouse; ToolTip.delay: 400
+                                        ToolTip.text: hasRule ? "rule exists for ." + modelData : "add rule for ." + modelData
+                                        MouseArea {
+                                            id: srcChipMa; anchors.fill: parent; hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: { if (!parent.hasRule) addRulePopup.openFor(modelData, parent) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Left fade — visible when scrolled right
+                        Rectangle {
+                            anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                            width: 16; visible: srcChipsFlick.contentX > 2
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: root.surface }
+                                GradientStop { position: 1.0; color: "transparent" }
+                            }
+                        }
+
+                        // Right fade — visible when more chips are off-screen to the right
+                        Rectangle {
+                            anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+                            width: 16
+                            visible: srcChipsFlick.contentX < srcChipsFlick.contentWidth - srcChipsFlick.width - 2
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: "transparent" }
+                                GradientStop { position: 1.0; color: root.surface }
+                            }
+                        }
+
+                        AppScrollBar {
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                            height: 3; orientation: Qt.Horizontal; flickable: srcChipsFlick
                         }
                     }
                 }
 
-                // Existing rules list
-                Column {
-                    Layout.fillWidth: true; spacing: 4
+                // Existing rules — compact flow of cards, up to 4 rows then scrolls.
+                // Click a card to edit its settings; × always visible to delete.
+                Item {
+                    Layout.fillWidth: true
+                    // implicitHeight (not height) so ColumnLayout participates correctly.
+                    // Caps visible area at 3 rows (3×28 + 2×4 = 92px); anything beyond scrolls.
+                    implicitHeight: Math.min(rulesFlow.implicitHeight, 92)
+                    Layout.maximumHeight: 92
+                    clip: true
                     opacity: panel.folderFiles.length > 0 ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
-                    Repeater {
-                        model: formatRulesModel
-                        RowLayout {
-                            width: parent.width; spacing: 8
-                            property bool hasOverride: model.ovVideoCodec !== "" || model.ovAudioCodec !== ""
-                                || model.ovAudioBitrate !== "" || model.ovCrf >= 0
-                                || model.ovRateMode === "vbr1" || model.ovRateMode === "vbr2"
-                            Text { text: "." + model.fromExt + "  \u2192"
-                                font.pixelSize: 11; font.family: root.appFont; color: root.textMid }
-                            Rectangle {
-                                width: ruleTgtLbl.implicitWidth + 14; height: 24; radius: 5
-                                color: root.surfaceHi; border.color: root.accent; border.width: 1
-                                Text { id: ruleTgtLbl; anchors.centerIn: parent; text: "." + model.toExt
-                                    font.pixelSize: 11; font.family: root.appFont; color: root.accent }
-                            }
-                            // Gear indicator for encoding overrides
-                            TintedIcon {
-                                visible: parent.hasOverride
-                                width: 13; height: 13
-                                source: "qrc:/icons/cogwheel.svg"
-                                color: root.accent
-                                ToolTip.visible: editRuleMa.containsMouse; ToolTip.delay: 300
-                                ToolTip.text: "has encoding settings — click to edit"
-                            }
-                            Item { Layout.fillWidth: true }
-                            // Edit button
-                            Rectangle {
-                                width: 20; height: 20; radius: 4
-                                color: editRuleMa.containsMouse ? root.surfaceHi : "transparent"
-                                Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { anchors.centerIn: parent; text: "\u270e"; font.pixelSize: 10; color: root.textDim }
-                                MouseArea { id: editRuleMa; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        addRulePopup.fromExt    = model.fromExt
-                                        addRulePopup.arToExt    = model.toExt
-                                        addRulePopup.arRateMode = model.ovRateMode || "crf"
-                                        arVideoInput.setValue(model.ovVideoCodec || "")
-                                        arAudioInput.setValue(model.ovAudioCodec || "")
-                                        arCrfInput.text = model.ovCrf >= 0 ? model.ovCrf.toString() : ""
-                                        arVbTargetInput.setValue(model.ovVideoBitrate || "")
-                                        arVbMaxInput.setValue(model.ovVideoMaxRate || "")
-                                        arAudioBitrateInput.setValue(model.ovAudioBitrate || "")
-                                        arResolutionInput.text = model.ovResolution || ""
-                                        arFramerateInput.text  = model.ovFramerate  || ""
-                                        addRulePopup.prepareForOpen()
-                                        Qt.callLater(function() { addRulePopup.open() })
+
+                    Flickable {
+                        id: rulesFlickable
+                        anchors.fill: parent
+                        contentWidth: width
+                        contentHeight: rulesFlow.implicitHeight
+                        flickableDirection: Flickable.VerticalFlick
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+
+                        Flow {
+                            id: rulesFlow
+                            width: rulesFlickable.width
+                            spacing: 4
+
+                            Repeater {
+                                model: formatRulesModel
+                                delegate: Rectangle {
+                                    id: ruleCard
+                                    property bool hasOverride: model.ovVideoCodec !== "" || model.ovAudioCodec !== ""
+                                        || model.ovAudioBitrate !== "" || model.ovCrf >= 0
+                                        || model.ovRateMode === "vbr1" || model.ovRateMode === "vbr2"
+
+                                    height: 28; radius: 6
+                                    // Width: content row + left pad 8 + gap 4 + × button 16 + right pad 6
+                                    width: cardRow.implicitWidth + 34
+                                    // Yellow outline always — signals the rule is active
+                                    border.color: root.accent; border.width: 1
+                                    // Hover highlight stays so users know the card is clickable
+                                    color: cardMa.containsMouse || xMa.containsMouse ? root.surfaceHi : root.surface
+                                    Behavior on color { ColorAnimation { duration: 80 } }
+
+                                    // Card click → open edit popup
+                                    MouseArea {
+                                        id: cardMa
+                                        anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            addRulePopup.fromExt    = model.fromExt
+                                            addRulePopup.arToExt    = model.toExt
+                                            addRulePopup.arRateMode = model.ovRateMode || "crf"
+                                            arVideoInput.setValue(model.ovVideoCodec || "")
+                                            arAudioInput.setValue(model.ovAudioCodec || "")
+                                            arCrfInput.text = model.ovCrf >= 0 ? model.ovCrf.toString() : ""
+                                            arVbTargetInput.setValue(model.ovVideoBitrate || "")
+                                            arVbMaxInput.setValue(model.ovVideoMaxRate || "")
+                                            arAudioBitrateInput.setValue(model.ovAudioBitrate || "")
+                                            arResolutionInput.text = model.ovResolution || ""
+                                            arFramerateInput.text  = model.ovFramerate  || ""
+                                            addRulePopup.prepareForOpen()
+                                            Qt.callLater(function() { addRulePopup.open() })
+                                        }
+                                    }
+
+                                    // ".mp4 → " in dim text, ".mp3" target in blue + optional gear
+                                    Row {
+                                        id: cardRow
+                                        anchors.left: parent.left; anchors.leftMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 4
+                                        Text {
+                                            text: "." + model.fromExt + " →"
+                                            font.pixelSize: 11; font.family: root.appFont; color: root.textMid
+                                        }
+                                        Text {
+                                            text: "." + model.toExt
+                                            font.pixelSize: 11; font.family: root.appFont; color: "#50b4ff"
+                                        }
+                                        TintedIcon {
+                                            visible: ruleCard.hasOverride
+                                            width: 11; height: 11
+                                            source: "qrc:/icons/cogwheel.svg"; color: root.accent
+                                        }
+                                    }
+
+                                    // × delete — always visible, highlights red on hover
+                                    // z:1 so its MA wins over cardMa in the overlap region
+                                    Rectangle {
+                                        z: 1
+                                        anchors.right: parent.right; anchors.rightMargin: 5
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 15; height: 15; radius: 3
+                                        color: xMa.containsMouse ? Qt.rgba(1, 0.35, 0.35, 0.3) : "transparent"
+                                        Behavior on color { ColorAnimation { duration: 60 } }
+                                        Text {
+                                            anchors.centerIn: parent; text: "\u2715"
+                                            font.pixelSize: 8; font.bold: true
+                                            color: xMa.containsMouse ? root.errorClr : root.textDim
+                                            Behavior on color { ColorAnimation { duration: 60 } }
+                                        }
+                                        MouseArea {
+                                            id: xMa; anchors.fill: parent; hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: { formatRulesModel.remove(index); panel.recomputeFolderStats() }
+                                        }
                                     }
                                 }
                             }
-                            Rectangle {
-                                width: 20; height: 20; radius: 4
-                                color: rmRuleMa.containsMouse ? root.errorClr : "transparent"
-                                Behavior on color { ColorAnimation { duration: 80 } }
-                                Text { anchors.centerIn: parent; text: "\u2715"; font.pixelSize: 10
-                                    color: root.textDim }
-                                MouseArea { id: rmRuleMa; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: { formatRulesModel.remove(index); panel.recomputeFolderStats() } }
-                            }
                         }
+                    }
+
+                    // Top fade — visible when scrolled down (more content above)
+                    Rectangle {
+                        anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
+                        height: 18
+                        visible: rulesFlickable.contentY > 2
+                        gradient: Gradient {
+                            orientation: Gradient.Vertical
+                            GradientStop { position: 0.0; color: root.surface }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Bottom fade — visible when there's more content below
+                    Rectangle {
+                        anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
+                        height: 18
+                        visible: rulesFlickable.contentY < rulesFlickable.contentHeight - rulesFlickable.height - 2
+                        gradient: Gradient {
+                            orientation: Gradient.Vertical
+                            GradientStop { position: 0.0; color: "transparent" }
+                            GradientStop { position: 1.0; color: root.surface }
+                        }
+                    }
+
+                    // Scrollbar — auto-hides when content fits within 4 rows
+                    AppScrollBar {
+                        anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+                        width: 3; orientation: Qt.Vertical; flickable: rulesFlickable
                     }
                 }
 

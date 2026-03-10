@@ -29,6 +29,17 @@ TEST_CASE("FormatRegistry - extension detection", "[registry][extension]") {
         REQUIRE(reg.detectByExtension("file.docx"));
         REQUIRE(reg.detectByExtension("file.epub"));
         REQUIRE(reg.detectByExtension("file.glb"));
+        // Formats added/fixed in recent audit
+        REQUIRE(reg.detectByExtension("file.ts"));
+        REQUIRE(reg.detectByExtension("file.m4v"));
+        REQUIRE(reg.detectByExtension("file.3gp"));
+        REQUIRE(reg.detectByExtension("file.wma"));
+        REQUIRE(reg.detectByExtension("file.caf"));
+        REQUIRE(reg.detectByExtension("file.exr"));
+        REQUIRE(reg.detectByExtension("file.hdr"));
+        REQUIRE(reg.detectByExtension("file.tga"));
+        REQUIRE(reg.detectByExtension("file.psd"));
+        REQUIRE(reg.detectByExtension("file.tif"));
     }
 
     SECTION("unknown extension returns nullopt") {
@@ -52,6 +63,17 @@ TEST_CASE("FormatRegistry - extension detection", "[registry][extension]") {
         REQUIRE(reg.detectByExtension("file.pdf")->category  == Category::Document);
         REQUIRE(reg.detectByExtension("file.epub")->category == Category::Ebook);
         REQUIRE(reg.detectByExtension("file.glb")->category  == Category::Model3D);
+        // New / previously-missing formats
+        REQUIRE(reg.detectByExtension("file.ts")->category   == Category::Video);
+        REQUIRE(reg.detectByExtension("file.m4v")->category  == Category::Video);
+        REQUIRE(reg.detectByExtension("file.3gp")->category  == Category::Video);
+        REQUIRE(reg.detectByExtension("file.wma")->category  == Category::Audio);
+        REQUIRE(reg.detectByExtension("file.caf")->category  == Category::Audio);
+        REQUIRE(reg.detectByExtension("file.exr")->category  == Category::Image);
+        REQUIRE(reg.detectByExtension("file.hdr")->category  == Category::Image);
+        REQUIRE(reg.detectByExtension("file.tga")->category  == Category::Image);
+        REQUIRE(reg.detectByExtension("file.psd")->category  == Category::Image);
+        REQUIRE(reg.detectByExtension("file.tif")->category  == Category::Image);
     }
 
     SECTION("ext field is lowercase without dot") {
@@ -73,6 +95,56 @@ TEST_CASE("FormatRegistry - canConvert", "[registry][targets]") {
         REQUIRE(reg.canConvert("docx", "pdf"));
         REQUIRE(reg.canConvert("epub", "mobi"));
         REQUIRE(reg.canConvert("obj",  "glb"));
+        // New video formats → common targets
+        REQUIRE(reg.canConvert("ts",   "mp4"));
+        REQUIRE(reg.canConvert("ts",   "mkv"));
+        REQUIRE(reg.canConvert("ts",   "mp3"));
+        REQUIRE(reg.canConvert("m4v",  "mp4"));
+        REQUIRE(reg.canConvert("m4v",  "mov"));
+        REQUIRE(reg.canConvert("m4v",  "gif"));
+        REQUIRE(reg.canConvert("3gp",  "mp4"));
+        REQUIRE(reg.canConvert("3gp",  "mp3"));
+        REQUIRE(reg.canConvert("vob",  "mp4"));
+        REQUIRE(reg.canConvert("rmvb", "mkv"));
+        // Expanded video container targets
+        REQUIRE(reg.canConvert("avi",  "mov"));
+        REQUIRE(reg.canConvert("mkv",  "mov"));
+        REQUIRE(reg.canConvert("flv",  "mov"));
+        REQUIRE(reg.canConvert("wmv",  "mkv"));
+        // New audio formats → common targets
+        REQUIRE(reg.canConvert("wma",  "mp3"));
+        REQUIRE(reg.canConvert("wma",  "flac"));
+        REQUIRE(reg.canConvert("wma",  "aac"));
+        REQUIRE(reg.canConvert("wma",  "ogg"));
+        REQUIRE(reg.canConvert("wma",  "m4a"));
+        REQUIRE(reg.canConvert("caf",  "mp3"));
+        REQUIRE(reg.canConvert("caf",  "flac"));
+        REQUIRE(reg.canConvert("caf",  "aac"));
+        // Completed audio cross-conversions
+        REQUIRE(reg.canConvert("flac", "aac"));
+        REQUIRE(reg.canConvert("flac", "ogg"));
+        REQUIRE(reg.canConvert("flac", "opus"));
+        REQUIRE(reg.canConvert("flac", "m4a"));
+        REQUIRE(reg.canConvert("aac",  "flac"));
+        REQUIRE(reg.canConvert("aac",  "ogg"));
+        REQUIRE(reg.canConvert("ogg",  "flac"));
+        REQUIRE(reg.canConvert("ogg",  "opus"));
+        REQUIRE(reg.canConvert("opus", "flac"));
+        REQUIRE(reg.canConvert("m4a",  "flac"));
+        REQUIRE(reg.canConvert("m4a",  "ogg"));
+        // New image format targets
+        REQUIRE(reg.canConvert("exr",  "png"));
+        REQUIRE(reg.canConvert("exr",  "hdr"));
+        REQUIRE(reg.canConvert("hdr",  "png"));
+        REQUIRE(reg.canConvert("hdr",  "exr"));
+        REQUIRE(reg.canConvert("tga",  "png"));
+        REQUIRE(reg.canConvert("tga",  "tiff"));
+        REQUIRE(reg.canConvert("psd",  "png"));
+        REQUIRE(reg.canConvert("psd",  "tga"));
+        REQUIRE(reg.canConvert("heic", "tiff"));
+        REQUIRE(reg.canConvert("heic", "avif"));
+        REQUIRE(reg.canConvert("avif", "tiff"));
+        REQUIRE(reg.canConvert("tif",  "png"));
     }
 
     SECTION("nonsense conversions are rejected") {

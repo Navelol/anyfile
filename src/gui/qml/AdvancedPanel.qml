@@ -418,7 +418,7 @@ Column {
                 // Framerate
                 ColumnLayout {
                     spacing: 3
-                    visible: adv.showVideoFields || adv.isGifTarget || adv.showImageFields
+                    visible: adv.showVideoFields || adv.isGifTarget || (adv.showImageFields && adv.targetExt !== "ico")
                     Layout.alignment: Qt.AlignTop
                     opacity: visible ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: adv.animMs; easing.type: Easing.InOutCubic } }

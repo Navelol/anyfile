@@ -258,6 +258,7 @@ private:
         reg("wmv",  Category::Video, "video/x-ms-wmv");
         reg("m4v",  Category::Video, "video/x-m4v");
         reg("3gp",  Category::Video, "video/3gpp");
+        reg("ts",   Category::Video, "video/mp2t");
         reg("vob",  Category::Video, "video/dvd");
         reg("rmvb", Category::Video, "video/x-pn-realvideo");
 
@@ -357,40 +358,44 @@ private:
         targets("tiff", {"png","jpg","webp","bmp","ico"});
         targets("tif",  {"png","jpg","webp","bmp","ico"});
         targets("gif",  {"png","jpg","webp","mp4","webm"});
-        targets("heic", {"png","jpg","webp","ico"});
-        targets("avif", {"png","jpg","webp","ico"});
+        targets("heic", {"png","jpg","webp","tiff","bmp","avif","ico"});
+        targets("avif", {"png","jpg","webp","tiff","bmp","ico"});
         targets("ico",  {"png","jpg","webp","bmp","tiff","gif"});
-        targets("tga",  {"png","jpg","webp","bmp","ico"});
-        targets("exr",  {"png","jpg","webp","tiff","bmp"});
+        targets("tga",  {"png","jpg","webp","bmp","tiff","ico"});
+        targets("exr",  {"png","jpg","webp","tiff","bmp","hdr"});
         targets("hdr",  {"png","jpg","webp","tiff","bmp","exr"});
-        targets("psd",  {"png","jpg","webp","tiff","bmp"});
+        targets("psd",  {"png","jpg","webp","tiff","bmp","tga"});
         targets("svg",  {"png","jpg","webp","ico"});
-        targets("raw",  {"jpg","png","tiff","webp"});
-        targets("cr2",  {"jpg","png","tiff","webp"});
-        targets("nef",  {"jpg","png","tiff","webp"});
-        targets("arw",  {"jpg","png","tiff","webp"});
-        targets("dng",  {"jpg","png","tiff","webp"});
+        targets("raw",  {"jpg","png","tiff","webp","bmp"});
+        targets("cr2",  {"jpg","png","tiff","webp","bmp"});
+        targets("nef",  {"jpg","png","tiff","webp","bmp"});
+        targets("arw",  {"jpg","png","tiff","webp","bmp"});
+        targets("dng",  {"jpg","png","tiff","webp","bmp"});
 
         // Video
-        targets("mp4",  {"mp3","wav","aac","webm","mkv","avi","mov","gif"});
-        targets("mov",  {"mp4","mp3","wav","webm","gif"});
-        targets("avi",  {"mp4","mp3","wav","webm","mkv","gif"});
-        targets("mkv",  {"mp4","mp3","wav","webm","avi"});
-        targets("webm", {"mp4","mp3","wav","gif"});
-        targets("flv",  {"mp4","mp3","wav"});
-        targets("wmv",  {"mp4","mp3","wav","webm"});
-        targets("vob",  {"mp4","mkv","avi","mp3","wav"});
-        targets("rmvb", {"mp4","mkv","avi","mp3","wav"});
+        targets("mp4",  {"mp3","wav","aac","webm","mkv","avi","mov","m4v","gif"});
+        targets("mov",  {"mp4","mp3","wav","aac","webm","mkv","avi","gif"});
+        targets("avi",  {"mp4","mp3","wav","aac","webm","mkv","mov","gif"});
+        targets("mkv",  {"mp4","mp3","wav","aac","webm","avi","mov"});
+        targets("webm", {"mp4","mp3","wav","aac","mkv","avi","gif"});
+        targets("flv",  {"mp4","mp3","wav","aac","webm","mkv","avi","mov"});
+        targets("wmv",  {"mp4","mp3","wav","aac","webm","mkv","avi","mov"});
+        targets("m4v",  {"mp4","mov","mp3","wav","aac","webm","mkv","gif"});
+        targets("3gp",  {"mp4","mov","mp3","wav","aac","webm","mkv"});
+        targets("ts",   {"mp4","mkv","avi","mov","mp3","wav","aac","webm"});
+        targets("vob",  {"mp4","mkv","avi","mov","mp3","wav","aac"});
+        targets("rmvb", {"mp4","mkv","avi","mov","mp3","wav","aac"});
 
         // Audio
         targets("mp3",  {"wav","flac","aac","ogg","opus","m4a"});
         targets("wav",  {"mp3","flac","aac","ogg","opus","m4a"});
-        targets("flac", {"mp3","wav","aac","ogg","opus"});
-        targets("aac",  {"mp3","wav","flac","ogg"});
-        targets("ogg",  {"mp3","wav","flac","aac"});
-        targets("opus", {"mp3","wav","ogg","flac"});
-        targets("m4a",  {"mp3","wav","flac","aac"});
-        targets("caf",  {"mp3","wav","flac","aac","ogg"});
+        targets("flac", {"mp3","wav","aac","ogg","opus","m4a"});
+        targets("aac",  {"mp3","wav","flac","ogg","opus","m4a"});
+        targets("ogg",  {"mp3","wav","flac","aac","opus","m4a"});
+        targets("opus", {"mp3","wav","ogg","flac","aac","m4a"});
+        targets("m4a",  {"mp3","wav","flac","aac","ogg","opus"});
+        targets("wma",  {"mp3","wav","flac","aac","ogg","opus","m4a"});
+        targets("caf",  {"mp3","wav","flac","aac","ogg","opus","m4a"});
 
         // 3D
         targets("fbx",  {"obj","glb","gltf","stl","dae","ply"});

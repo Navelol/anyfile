@@ -8,6 +8,7 @@
 #include "DocumentConverter.h"
 #include "ArchiveConverter.h"
 #include "PdfRenderer.h"
+#include "PathValidator.h"
 #include <random>
 
 #ifdef __linux__
@@ -22,6 +23,14 @@ public:
 
     // Main entry point — takes a job and routes it to the right converter
     static ConversionResult dispatch(ConversionJob job) {
+
+        // ── Security: validate paths and options before touching anything ──────
+        if (auto err = PathValidator::validateInput(job.inputPath);  !err.empty())
+            return ConversionResult::err("Invalid input path: "  + err);
+        if (auto err = PathValidator::validateOutput(job.outputPath); !err.empty())
+            return ConversionResult::err("Invalid output path: " + err);
+        if (auto err = validateJobOptions(job); !err.empty())
+            return ConversionResult::err(err);
 
         // Validate input file exists
         if (!fs::exists(job.inputPath))
@@ -79,6 +88,39 @@ public:
     }
 
 private:
+
+    // ── Option validation ─────────────────────────────────────────────────────
+    // Validates all user-supplied subprocess option strings on the job.
+    // Returns empty string on success, error message on first bad field.
+    static std::string validateJobOptions(const ConversionJob& job) {
+        // Each optional field is checked only when present. The name passed to
+        // validateOption() appears verbatim in any error message shown to the user.
+        using PV = PathValidator;
+        if (job.videoCodec  && !job.videoCodec->empty())
+            if (auto e = PV::validateOption(*job.videoCodec,  "video codec");  !e.empty()) return e;
+        if (job.audioCodec  && !job.audioCodec->empty())
+            if (auto e = PV::validateOption(*job.audioCodec,  "audio codec");  !e.empty()) return e;
+        if (job.pixelFormat && !job.pixelFormat->empty())
+            if (auto e = PV::validateOption(*job.pixelFormat, "pixel format"); !e.empty()) return e;
+        if (job.videoBitrate && !job.videoBitrate->empty())
+            if (auto e = PV::validateOption(*job.videoBitrate, "video bitrate"); !e.empty()) return e;
+        if (job.videoMaxRate && !job.videoMaxRate->empty())
+            if (auto e = PV::validateOption(*job.videoMaxRate, "video max-rate"); !e.empty()) return e;
+        if (job.audioBitrate && !job.audioBitrate->empty())
+            if (auto e = PV::validateOption(*job.audioBitrate, "audio bitrate"); !e.empty()) return e;
+        if (job.resolution && !job.resolution->empty())
+            if (auto e = PV::validateOption(*job.resolution,  "resolution");   !e.empty()) return e;
+        if (job.framerate  && !job.framerate->empty())
+            if (auto e = PV::validateOption(*job.framerate,   "framerate");    !e.empty()) return e;
+        if (job.crf) {
+            constexpr int CRF_MIN = 0, CRF_MAX = 63;
+            if (*job.crf < CRF_MIN || *job.crf > CRF_MAX)
+                return "CRF value " + std::to_string(*job.crf)
+                     + " is out of valid range (" + std::to_string(CRF_MIN)
+                     + "–" + std::to_string(CRF_MAX) + ")";
+        }
+        return "";
+    }
 
     // ── Space estimation ──────────────────────────────────────────────────────
     // Returns a conservative upper-bound estimate of output size in bytes.

@@ -224,6 +224,22 @@ mkdir -p "$OUT/images" "$OUT/audio" "$OUT/video" "$OUT/models" "$OUT/ebooks" "$O
 [ -f "$TESTS/video/test.avi" ]         && cp "$TESTS/video/test.avi"         "$OUT/video/seed.avi"
 [ -f "$TESTS/video/test.mp4" ]         && cp "$TESTS/video/test.mp4"         "$OUT/video/seed.mp4"
 
+# Generate seed files for new formats using ffmpeg (skipped silently if unavailable)
+if command -v ffmpeg > /dev/null 2>&1; then
+    # TS (MPEG-TS) from AVI
+    [ -f "$OUT/video/seed.avi" ] && [ ! -f "$OUT/video/seed.ts" ] && \
+        ffmpeg -i "$OUT/video/seed.avi" -c copy "$OUT/video/seed.ts" > /dev/null 2>&1
+    # M4V from MP4
+    [ -f "$OUT/video/seed.mp4" ] && [ ! -f "$OUT/video/seed.m4v" ] && \
+        ffmpeg -i "$OUT/video/seed.mp4" -c copy "$OUT/video/seed.m4v" > /dev/null 2>&1
+    # 3GP from MP4
+    [ -f "$OUT/video/seed.mp4" ] && [ ! -f "$OUT/video/seed.3gp" ] && \
+        ffmpeg -i "$OUT/video/seed.mp4" -c:v libx264 -c:a aac -vf scale=320:240 "$OUT/video/seed.3gp" > /dev/null 2>&1
+    # WMA from MP3
+    [ -f "$OUT/audio/seed.mp3" ] && [ ! -f "$OUT/audio/seed.wma" ] && \
+        ffmpeg -i "$OUT/audio/seed.mp3" "$OUT/audio/seed.wma" > /dev/null 2>&1
+fi
+
 echo -e "  ${GREEN}Done${RESET}"
 
 # ── Misnamed seed files for magic-number detection tests ─────────────────────
@@ -436,8 +452,17 @@ run_test "PNG  → BMP"   "$OUT/images/seed.png"  "$OUT/images/out.bmp"
 run_test "PNG  → TIFF"  "$OUT/images/seed.png"  "$OUT/images/out.tiff"
 run_test "PNG  → GIF"   "$OUT/images/seed.png"  "$OUT/images/out.gif"
 run_test "PNG  → AVIF"  "$OUT/images/seed.png"  "$OUT/images/out.avif"
+run_test "PNG  → TGA"   "$OUT/images/seed.png"  "$OUT/images/out.tga"
 run_test "JPG  → PNG"   "$OUT/images/out.jpg"   "$OUT/images/from_jpg.png"
+run_test "JPG  → TIFF"  "$OUT/images/out.jpg"   "$OUT/images/from_jpg.tiff"
+run_test "JPG  → AVIF"  "$OUT/images/out.jpg"   "$OUT/images/from_jpg.avif"
 run_test "WEBP → PNG"   "$OUT/images/out.webp"  "$OUT/images/from_webp.png"
+run_test "BMP  → PNG"   "$OUT/images/out.bmp"   "$OUT/images/from_bmp.png"
+run_test "TIFF → PNG"   "$OUT/images/out.tiff"  "$OUT/images/from_tiff.png"
+run_test "TGA  → PNG"   "$OUT/images/out.tga"   "$OUT/images/from_tga.png"
+run_test "TGA  → TIFF"  "$OUT/images/out.tga"   "$OUT/images/from_tga.tiff"
+run_test "GIF  → PNG"   "$OUT/images/out.gif"   "$OUT/images/from_gif.png"
+run_test "GIF  → MP4"   "$OUT/images/out.gif"   "$OUT/images/from_gif.mp4"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AUDIO
@@ -450,8 +475,23 @@ run_test "MP3  → FLAC"  "$OUT/audio/seed.mp3"  "$OUT/audio/out.flac"
 run_test "MP3  → AAC"   "$OUT/audio/seed.mp3"  "$OUT/audio/out.aac"
 run_test "MP3  → OGG"   "$OUT/audio/seed.mp3"  "$OUT/audio/out.ogg"
 run_test "MP3  → OPUS"  "$OUT/audio/seed.mp3"  "$OUT/audio/out.opus"
+run_test "MP3  → M4A"   "$OUT/audio/seed.mp3"  "$OUT/audio/out.m4a"
 run_test "WAV  → MP3"   "$OUT/audio/out.wav"   "$OUT/audio/from_wav.mp3"
+run_test "WAV  → FLAC"  "$OUT/audio/out.wav"   "$OUT/audio/from_wav.flac"
+run_test "WAV  → AAC"   "$OUT/audio/out.wav"   "$OUT/audio/from_wav.aac"
+run_test "WAV  → OGG"   "$OUT/audio/out.wav"   "$OUT/audio/from_wav.ogg"
 run_test "FLAC → MP3"   "$OUT/audio/out.flac"  "$OUT/audio/from_flac.mp3"
+run_test "FLAC → AAC"   "$OUT/audio/out.flac"  "$OUT/audio/from_flac.aac"
+run_test "FLAC → OGG"   "$OUT/audio/out.flac"  "$OUT/audio/from_flac.ogg"
+run_test "FLAC → M4A"   "$OUT/audio/out.flac"  "$OUT/audio/from_flac.m4a"
+run_test "AAC  → MP3"   "$OUT/audio/out.aac"   "$OUT/audio/from_aac.mp3"
+run_test "AAC  → FLAC"  "$OUT/audio/out.aac"   "$OUT/audio/from_aac.flac"
+run_test "OGG  → MP3"   "$OUT/audio/out.ogg"   "$OUT/audio/from_ogg.mp3"
+run_test "OGG  → FLAC"  "$OUT/audio/out.ogg"   "$OUT/audio/from_ogg.flac"
+run_test "WMA  → MP3"   "$OUT/audio/seed.wma"  "$OUT/audio/from_wma.mp3"
+run_test "WMA  → FLAC"  "$OUT/audio/seed.wma"  "$OUT/audio/from_wma.flac"
+run_test "WMA  → AAC"   "$OUT/audio/seed.wma"  "$OUT/audio/from_wma.aac"
+run_test "WMA  → OGG"   "$OUT/audio/seed.wma"  "$OUT/audio/from_wma.ogg"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VIDEO
@@ -461,12 +501,26 @@ section "Video"
 
 run_test "AVI  → MP4"   "$OUT/video/seed.avi"  "$OUT/video/from_avi.mp4"
 run_test "AVI  → MKV"   "$OUT/video/seed.avi"  "$OUT/video/from_avi.mkv"
+run_test "AVI  → MOV"   "$OUT/video/seed.avi"  "$OUT/video/from_avi.mov"
 run_test "AVI  → WEBM"  "$OUT/video/seed.avi"  "$OUT/video/from_avi.webm"
 run_test "AVI  → MP3"   "$OUT/video/seed.avi"  "$OUT/video/from_avi.mp3"
+run_test "AVI  → AAC"   "$OUT/video/seed.avi"  "$OUT/video/from_avi.aac"
 run_test "AVI  → GIF"   "$OUT/video/seed.avi"  "$OUT/video/from_avi.gif"
 run_test "MP4  → MKV"   "$OUT/video/seed.mp4"  "$OUT/video/from_mp4.mkv"
+run_test "MP4  → MOV"   "$OUT/video/seed.mp4"  "$OUT/video/from_mp4.mov"
 run_test "MP4  → MP3"   "$OUT/video/seed.mp4"  "$OUT/video/from_mp4.mp3"
+run_test "MP4  → AAC"   "$OUT/video/seed.mp4"  "$OUT/video/from_mp4.aac"
 run_test "MP4  → GIF"   "$OUT/video/seed.mp4"  "$OUT/video/from_mp4.gif"
+run_test "TS   → MP4"   "$OUT/video/seed.ts"   "$OUT/video/from_ts.mp4"
+run_test "TS   → MKV"   "$OUT/video/seed.ts"   "$OUT/video/from_ts.mkv"
+run_test "TS   → MP3"   "$OUT/video/seed.ts"   "$OUT/video/from_ts.mp3"
+run_test "M4V  → MP4"   "$OUT/video/seed.m4v"  "$OUT/video/from_m4v.mp4"
+run_test "M4V  → MOV"   "$OUT/video/seed.m4v"  "$OUT/video/from_m4v.mov"
+run_test "M4V  → MP3"   "$OUT/video/seed.m4v"  "$OUT/video/from_m4v.mp3"
+run_test "M4V  → GIF"   "$OUT/video/seed.m4v"  "$OUT/video/from_m4v.gif"
+run_test "3GP  → MP4"   "$OUT/video/seed.3gp"  "$OUT/video/from_3gp.mp4"
+run_test "3GP  → MKV"   "$OUT/video/seed.3gp"  "$OUT/video/from_3gp.mkv"
+run_test "3GP  → MP3"   "$OUT/video/seed.3gp"  "$OUT/video/from_3gp.mp3"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MEDIA ENCODING FLAGS
@@ -511,8 +565,14 @@ run_batch_test "Batch audio → wav"          "$OUT/audio"  "mp3:wav,flac:wav"  
 # Batch with explicit output dir
 run_batch_test "Batch audio → mp3 (explicit out)" "$OUT/audio" "wav:mp3" "$OUT/batch/audio_mp3"
 
+# Batch WMA → MP3
+run_batch_test "Batch wma → mp3"            "$OUT/audio"  "wma:mp3"           "$OUT/batch/audio_wma"
+
 # Batch video → mp3 (extract audio)
 run_batch_test "Batch video → mp3"          "$OUT/video"  "avi:mp3,mp4:mp3"   "$OUT/batch/video_audio"
+
+# Batch new video formats → mp4
+run_batch_test "Batch ts,m4v,3gp → mp4"    "$OUT/video"  "ts:mp4,m4v:mp4,3gp:mp4"  "$OUT/batch/video_new"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SINGLE FILE — NEW SYNTAX

@@ -3,6 +3,7 @@
 #include "Types.h"
 #include "Subprocess.h"
 #include <chrono>
+#include <unordered_set>
 
 namespace converter {
 
@@ -230,6 +231,15 @@ private:
             }
         }
         if (job.framerate) { args.push_back("-r"); args.push_back(*job.framerate); }
+
+        // For image outputs from animated sources (GIF, video → PNG/JPG/etc.),
+        // limit to one frame so ffmpeg writes a single file instead of a sequence.
+        static const std::unordered_set<std::string> imageExts = {
+            "png","jpg","jpeg","webp","bmp","tiff","tif","avif","tga","exr","hdr"
+        };
+        if (imageExts.count(outExt) && !job.framerate) {
+            args.push_back("-frames:v"); args.push_back("1");
+        }
 
         args.push_back(job.outputPath.string());
         return args;

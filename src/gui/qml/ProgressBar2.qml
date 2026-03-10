@@ -8,6 +8,16 @@ Item {
     property real   value:   0.0
     property string message: ""
 
+    // Elapsed time since the current conversion started (seconds).
+    property int elapsedSeconds: 0
+
+    function fmtElapsed(s) {
+        if (s < 60) return s + "s"
+        var m = Math.floor(s / 60)
+        var sec = s % 60
+        return m + ":" + (sec < 10 ? "0" : "") + sec
+    }
+
     // Fake progress: smoothly animate toward 0.9 while converting,
     // then the real value=1.0 from the bridge snaps it to 100%.
     property real displayValue: 0.0
@@ -17,7 +27,8 @@ Item {
     // Otherwise, let the fake timer drive displayValue forward.
     onValueChanged: {
         if (value <= 0.0) {
-            displayValue = 0.0   // reset for next conversion
+            displayValue = 0.0
+            elapsedSeconds = 0
         } else if (value >= 1.0) {
             displayValue = 1.0
         } else if (value > displayValue) {
@@ -34,6 +45,24 @@ Item {
             // Slow logarithmic crawl — moves fast early, slows near 0.9
             var remaining = 0.9 - bar.displayValue
             bar.displayValue += remaining * 0.07
+        }
+    }
+
+    // Counts real elapsed seconds. Gives users concrete evidence the app
+    // isn't frozen during long conversions where fake progress stalls near 90%.
+    Timer {
+        id: elapsedTimer
+        interval: 1000
+        repeat: true
+        running: bridge.converting
+        onTriggered: bar.elapsedSeconds++
+    }
+
+    // Reset elapsed counter whenever a new conversion kicks off.
+    Connections {
+        target: bridge
+        function onConvertingChanged() {
+            if (bridge.converting) bar.elapsedSeconds = 0
         }
     }
 
@@ -88,6 +117,18 @@ Item {
                 font.pixelSize: 11
                 font.family: root.appFont
                 color: root.textDim
+            }
+
+            // Elapsed time — visible after the first second so it doesn't flash
+            // briefly on fast conversions. Gives users proof the app is working
+            // when fake progress stalls during long encodes.
+            Text {
+                visible: bar.elapsedSeconds > 0 && bridge.converting
+                text: bar.fmtElapsed(bar.elapsedSeconds)
+                font.pixelSize: 11
+                font.family: root.appFont
+                color: root.textDim
+                opacity: 0.55
             }
         }
     }
