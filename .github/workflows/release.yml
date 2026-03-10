@@ -110,38 +110,166 @@ jobs:
           windeployqt6 --no-translations --no-quick-import anyfile_gui.exe || \
           windeployqt  --no-translations --no-quick-import anyfile_gui.exe
 
-      - name: Copy runtime DLLs
+      - name: Download portable tools
+        shell: pwsh
         run: |
-          BIN=build/windows/bin
-          # Recursively copy all MinGW64 DLLs that our binaries depend on.
-          # Uses process substitution (< <(...)) instead of pipe-to-while to
-          # avoid pipefail triggering when grep finds no /mingw64/ matches.
-          collect_dlls() {
-            local bin="$1"
-            while IFS= read -r dll; do
-              local name
-              name=$(basename "$dll")
-              if [ -f "$dll" ] && [ ! -f "$BIN/$name" ]; then
-                cp "$dll" "$BIN/"
-                collect_dlls "$BIN/$name"
-              fi
-            done < <(ldd "$bin" 2>/dev/null | grep -i '/mingw64/' | awk '{print $3}' || true)
-          }
-          for exe in "$BIN"/*.exe; do
-            [ -f "$exe" ] && collect_dlls "$exe"
-          done
-          # Also scan DLLs that windeployqt already placed (they have their own deps)
-          for dll in "$BIN"/*.dll; do
-            [ -f "$dll" ] && collect_dlls "$dll"
-          done
-          # Copy libmagic database file
-          cp /mingw64/share/misc/magic.mgc "$BIN/" 2>/dev/null || true
+          $ToolsDl = "tools_dl"
+          New-Item -ItemType Directory -Path $ToolsDl -Force | Out-Null
+          $MingwBin = "C:\msys64\mingw64\bin"
 
-      - name: Package ZIP
+          # ── FFmpeg ── already installed via MSYS2 above
+          Write-Host "Copying FFmpeg from MSYS2..."
+          $FfmpegDir = Join-Path $ToolsDl "ffmpeg"
+          New-Item -ItemType Directory -Path $FfmpegDir -Force | Out-Null
+          foreach ($exe in @("ffmpeg.exe", "ffprobe.exe", "ffplay.exe")) {
+              $src = Join-Path $MingwBin $exe
+              if (Test-Path $src) { Copy-Item $src $FfmpegDir }
+          }
+          # Copy FFmpeg DLLs (avcodec, avformat, avutil, swscale, swresample, avdevice, avfilter, postproc)
+          Get-ChildItem $MingwBin -Filter "av*.dll"    | Copy-Item -Destination $FfmpegDir
+          Get-ChildItem $MingwBin -Filter "sw*.dll"    | Copy-Item -Destination $FfmpegDir
+          Get-ChildItem $MingwBin -Filter "postproc*.dll" | Copy-Item -Destination $FfmpegDir
+
+          # ── Pandoc ──────────────────────────────────────────────────────────
+          Write-Host "Downloading Pandoc..."
+          $PandocVer = "3.6.3"
+          $PandocUrl = "https://github.com/jgm/pandoc/releases/download/$PandocVer/pandoc-$PandocVer-windows-x86_64.zip"
+          Invoke-WebRequest $PandocUrl -OutFile "pandoc.zip" -UseBasicParsing
+          Expand-Archive "pandoc.zip" -DestinationPath "pandoc_dl" -Force
+          $PandocSrc = Get-ChildItem "pandoc_dl" -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Path (Join-Path $ToolsDl "pandoc") -Force | Out-Null
+          Copy-Item "$($PandocSrc.FullName)\*" (Join-Path $ToolsDl "pandoc") -Recurse
+
+          # ── Poppler ─────────────────────────────────────────────────────────
+          Write-Host "Downloading Poppler..."
+          $PopplerUrl = "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.08.0-0/Release-24.08.0-0.zip"
+          Invoke-WebRequest $PopplerUrl -OutFile "poppler.zip" -UseBasicParsing
+          Expand-Archive "poppler.zip" -DestinationPath "poppler_dl" -Force
+          $PopplerBin = Get-ChildItem "poppler_dl" -Filter "bin" -Recurse -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Path (Join-Path $ToolsDl "poppler\bin") -Force | Out-Null
+          Copy-Item "$($PopplerBin.FullName)\*" (Join-Path $ToolsDl "poppler\bin")
+
+          # ── Calibre ─────────────────────────────────────────────────────────
+          Write-Host "Installing Calibre..."
+          choco install calibre --no-progress -y | Out-Null
+          $CalibreDir = "C:\Program Files\Calibre2"
+          if (Test-Path $CalibreDir) {
+              New-Item -ItemType Directory -Path (Join-Path $ToolsDl "calibre") -Force | Out-Null
+              Copy-Item "$CalibreDir\*" (Join-Path $ToolsDl "calibre") -Recurse
+              Write-Host "Calibre bundled."
+          } else {
+              Write-Warning "Calibre not found at $CalibreDir — skipped"
+          }
+
+          # ── LibreOffice ──────────────────────────────────────────────────────
+          Write-Host "Installing LibreOffice..."
+          choco install libreoffice --no-progress -y | Out-Null
+          $LoProgram = "C:\Program Files\LibreOffice\program"
+          if (Test-Path $LoProgram) {
+              New-Item -ItemType Directory -Path (Join-Path $ToolsDl "libreoffice\program") -Force | Out-Null
+              Copy-Item "$LoProgram\*" (Join-Path $ToolsDl "libreoffice\program") -Recurse
+              Write-Host "LibreOffice bundled."
+          } else {
+              Write-Warning "LibreOffice not found at $LoProgram — skipped"
+          }
+
+      - name: Package
+        shell: pwsh
         run: |
-          mkdir -p dist
-          cd build/windows/bin
-          7z a ../../../dist/Anyfile-windows-x86_64.zip .
+          $BinDir   = "build\windows\bin"
+          $DistDir  = "build\windows\dist\everyfile"
+          $MingwBin = "C:\msys64\mingw64\bin"
+
+          # Recreate dist folder
+          if (Test-Path $DistDir) { Remove-Item $DistDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $DistDir | Out-Null
+
+          # Copy build output (exes, Qt DLLs, plugins, QML modules)
+          Copy-Item "$BinDir\*" $DistDir -Recurse
+
+          # Remove test binary
+          $testExe = Join-Path $DistDir "anyfile_tests.exe"
+          if (Test-Path $testExe) { Remove-Item $testExe }
+
+          # MSYS2 runtime DLLs (same list as build_windows.ps1)
+          $RuntimeDlls = @(
+              "libgcc_s_seh-1.dll",
+              "libstdc++-6.dll",
+              "libwinpthread-1.dll",
+              "libbz2-1.dll",
+              "libzstd.dll",
+              "liblzma-5.dll",
+              "zlib1.dll",
+              "libcrypto-3-x64.dll",
+              "libiconv-2.dll",
+              "libintl-8.dll",
+              "libexpat-1.dll",
+              "libtre-5.dll",
+              "libsystre-0.dll",
+              "libb2-1.dll",
+              "liblz4.dll",
+              "libminizip-1.dll",
+              "libarchive-13.dll",
+              "libassimp-6.dll",
+              "libmagic-1.dll",
+              "libpcre2-8-0.dll",
+              "libpcre2-16-0.dll",
+              "libdouble-conversion.dll",
+              "libfreetype-6.dll",
+              "libglib-2.0-0.dll",
+              "libgraphite2.dll",
+              "libharfbuzz-0.dll",
+              "libicudt78.dll",
+              "libicuin78.dll",
+              "libicuuc78.dll",
+              "libmd4c.dll",
+              "libpng16-16.dll",
+              "libbrotlicommon.dll",
+              "libbrotlidec.dll"
+          )
+
+          Write-Host "Copying runtime DLLs..."
+          $missing = @()
+          foreach ($dll in $RuntimeDlls) {
+              $src = Join-Path $MingwBin $dll
+              if (Test-Path $src) {
+                  Copy-Item $src $DistDir
+              } else {
+                  $missing += $dll
+              }
+          }
+          if ($missing.Count -gt 0) {
+              Write-Warning "DLLs not found (skipped): $($missing -join ', ')"
+          }
+
+          # magic.mgc
+          $MagicMgc = "C:\msys64\mingw64\share\misc\magic.mgc"
+          if (Test-Path $MagicMgc) {
+              Copy-Item $MagicMgc $DistDir
+          }
+
+          # Bundle portable tools downloaded in the previous step
+          $ToolsSrc = "tools_dl"
+          $ToolsDir = Join-Path $DistDir "tools"
+          if (Test-Path $ToolsSrc) {
+              Write-Host "Bundling portable tools..."
+              New-Item -ItemType Directory -Path $ToolsDir -Force | Out-Null
+              Copy-Item "$ToolsSrc\*" $ToolsDir -Recurse
+          }
+
+          # Launcher batch file — adds tools subdirs to PATH so soffice/pandoc/etc are found
+          $LauncherContent = @'
+@echo off
+set MAGIC=%~dp0magic.mgc
+set PATH=%~dp0tools\ffmpeg;%~dp0tools\pandoc;%~dp0tools\poppler\bin;%~dp0tools\calibre;%~dp0tools\libreoffice\program;%PATH%
+start "" "%~dp0anyfile_gui.exe" %*
+'@
+          Set-Content -Path (Join-Path $DistDir "everyfile.bat") -Value $LauncherContent -Encoding ASCII
+
+          # Compress
+          mkdir dist -Force | Out-Null
+          7z a -tzip dist/Anyfile-windows-x86_64.zip $DistDir | Out-Null
+          Write-Host "Package ready -> dist/Anyfile-windows-x86_64.zip"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
