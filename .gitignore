@@ -45,3 +45,6 @@ dist/
 # Release files
 website-content.txt
 releasenote.txt
+
+# Misc 
+docs/

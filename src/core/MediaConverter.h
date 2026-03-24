@@ -99,7 +99,7 @@ private:
         if (outExt == "mkv")
             return { "libx264", "aac", "yuv420p", 16, "320k" };
         if (outExt == "webm")
-            return { "libvpx-vp9", "libopus", "yuv420p", 24, "192k" };
+            return { "libvpx-vp9", "libopus", "yuva420p", 24, "192k" };
         if (outExt == "mov")
             return { "libx264", "aac", "yuv420p", 16, "320k" };
         if (outExt == "avi")
