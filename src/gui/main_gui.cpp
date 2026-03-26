@@ -9,6 +9,7 @@
 #include "../core/ToolPaths.h"
 
 int main(int argc, char* argv[]) {
+    using namespace Qt::StringLiterals;
     converter::ToolPaths::init();
     QQuickStyle::setStyle("Basic");
     QApplication app(argc, argv);
@@ -26,7 +27,7 @@ int main(int argc, char* argv[]) {
     // Allow QML modules to be found next to the executable (e.g. deployed bin/qml/)
     engine.addImportPath(QCoreApplication::applicationDirPath() + "/qml");
 
-    const QUrl url(u"qrc:/Anyfile/qml/Main.qml"_qs);
+    const QUrl url(u"qrc:/Anyfile/qml/Main.qml"_s);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
                      &app, [](){ QCoreApplication::exit(-1); },
                      Qt::QueuedConnection);

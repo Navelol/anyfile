@@ -14,9 +14,28 @@ find_package(Qt6 REQUIRED COMPONENTS
 qt_standard_project_setup()
 
 # ── GUI executable ────────────────────────────────────────────────────────────
+# Platform-specific resource files:
+#   Windows — app.rc embeds the app icon and PE version metadata.
+#   macOS   — app.icns is embedded into the .app bundle by CMake.
+#             Generate it from resources/icons/app.png via build_macos.sh
+#             (uses sips + iconutil) before running CMake.
+#   Linux   — no binary resource file needed; icons are installed separately.
+if(WIN32)
+    set(PLATFORM_RESOURCES resources/app.rc)
+elseif(APPLE)
+    set(PLATFORM_RESOURCES resources/icons/app.icns)
+    # Tell CMake this file is a bundle resource so it lands in
+    # Anyfile.app/Contents/Resources/ rather than being compiled.
+    set_source_files_properties(resources/icons/app.icns
+        PROPERTIES MACOSX_PACKAGE_LOCATION "Resources"
+    )
+else()
+    set(PLATFORM_RESOURCES "")
+endif()
+
 qt_add_executable(anyfile_gui
     main_gui.cpp
-    resources/app.rc
+    ${PLATFORM_RESOURCES}
 )
 
 # ── Embed icons and other static resources ───────────────────────────────────
@@ -87,13 +106,17 @@ target_include_directories(anyfile_gui PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
 )
 
-# ── macOS app bundle ──────────────────────────────────────────────────────────
+# ── Bundle / executable properties ───────────────────────────────────────────
+# MACOSX_BUNDLE        — produce a proper .app bundle on macOS.
+# MACOSX_BUNDLE_ICON_FILE — the .icns file placed in Contents/Resources/.
+# WIN32_EXECUTABLE     — suppress the Windows console window.
 set_target_properties(anyfile_gui PROPERTIES
-    MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_BUNDLE_NAME "Anyfile"
-    MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
+    MACOSX_BUNDLE                   TRUE
+    MACOSX_BUNDLE_BUNDLE_NAME       "Anyfile"
+    MACOSX_BUNDLE_BUNDLE_VERSION    "0.1"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1"
-    WIN32_EXECUTABLE TRUE
+    MACOSX_BUNDLE_ICON_FILE         "app.icns"
+    WIN32_EXECUTABLE                TRUE
 )
 
 # ── Windows: deploy Qt DLLs next to the exe (requires windeployqt) ────────────
@@ -112,4 +135,45 @@ if(WIN32)
         COMMENT "Running windeployqt..."
         VERBATIM
     )
+endif()
+
+# ── macOS: deploy Qt frameworks into the .app bundle (requires macdeployqt) ──
+# macdeployqt copies all required Qt frameworks, plugins, and QML modules into
+# the .app bundle so it is self-contained and can be distributed without
+# requiring Qt to be installed on the target machine.
+if(APPLE)
+    find_program(MACDEPLOYQT_BIN
+        NAMES macdeployqt macdeployqt6
+        HINTS "${Qt6_DIR}/../../../bin"
+        DOC   "Path to the macdeployqt deployment tool"
+    )
+    if(MACDEPLOYQT_BIN)
+        add_custom_command(TARGET anyfile_gui POST_BUILD
+            COMMAND "${MACDEPLOYQT_BIN}"
+                    "$<TARGET_BUNDLE_DIR:anyfile_gui>"
+                    -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml
+                    -always-overwrite
+            COMMENT "Running macdeployqt..."
+            VERBATIM
+        )
+        # macdeployqt copies and patches frameworks, which invalidates the
+        # original code signature.  macOS will SIGKILL the app on launch with
+        # "Code Signature Invalid" if we don't re-sign.
+        #
+        # Step 1: strip extended attributes (quarantine xattrs set by macdeployqt
+        #         when copying files) — codesign rejects bundles that have them.
+        # Step 2: ad-hoc re-sign (--sign -).  No Apple Developer account needed
+        #         for local development.
+        add_custom_command(TARGET anyfile_gui POST_BUILD
+            COMMAND xattr -cr "$<TARGET_BUNDLE_DIR:anyfile_gui>"
+            COMMAND codesign --force --deep --sign -
+                    "$<TARGET_BUNDLE_DIR:anyfile_gui>"
+            COMMENT "Signing .app bundle..."
+            VERBATIM
+        )
+    else()
+        message(WARNING
+            "macdeployqt not found — the .app bundle will not be self-contained. "
+            "Install Qt6 via Homebrew (brew install qt@6) or set Qt6_DIR.")
+    endif()
 endif()
