@@ -13,6 +13,13 @@ find_package(Qt6 REQUIRED COMPONENTS
 
 qt_standard_project_setup()
 
+# ── Qt policies ──────────────────────────────────────────────────────────────
+# QTP0001: use :/qt/qml/ as the default resource prefix for QML modules.
+# QTP0004: require qmldir files for each extra QML directory.
+# Setting NEW adopts the recommended behavior and silences the warnings.
+qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
+
 # ── GUI executable ────────────────────────────────────────────────────────────
 # Platform-specific resource files:
 #   Windows — app.rc embeds the app icon and PE version metadata.
