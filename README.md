@@ -46,7 +46,7 @@ brew bundle
 ./scripts/build_macos.sh --gui
 ```
 
-`brew bundle` reads the `Brewfile` and installs everything at once — cmake, Qt6, FFmpeg, and the rest. The build script handles the rest, including generating the app icon and running `macdeployqt` to produce a self-contained `.app` bundle.
+`brew bundle` reads the `Brewfile` and installs everything at once — cmake, Qt6, FFmpeg, and the rest. The build script configures, compiles, and runs `macdeployqt` to produce a self-contained `.app` bundle, then ad-hoc signs it so macOS doesn't reject it on launch.
 
 To also produce a distributable DMG:
 
