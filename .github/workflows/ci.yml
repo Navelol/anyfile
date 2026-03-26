@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Linux ──────────────────────────────────────────────────────────────────
+  build-linux:
+    name: Linux (GCC)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build pkg-config \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev \
+            libassimp-dev libarchive-dev libmagic-dev \
+            libgl1-mesa-dev
+
+      - name: Install Qt 6.6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.*'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: 'qtquick3d'
+          cache: true
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/linux \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_GUI=ON \
+            -DBUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build/linux --parallel $(nproc)
+
+      - name: Test
+        run: ctest --test-dir build/linux --output-on-failure
+
+  # ── macOS ──────────────────────────────────────────────────────────────────
+  build-macos:
+    name: macOS (Apple Clang)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies via Homebrew
+        run: |
+          brew update
+          brew bundle --file=Brewfile
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/macos \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_GUI=ON \
+            -DBUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build/macos --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Test
+        run: ctest --test-dir build/macos --output-on-failure
+
+  # ── Windows ────────────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows (MinGW64)
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ffmpeg
+            mingw-w64-x86_64-assimp
+            mingw-w64-x86_64-libarchive
+            mingw-w64-x86_64-file
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-declarative
+            mingw-w64-x86_64-qt6-svg
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/windows \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_GUI=ON \
+            -DBUILD_TESTS=ON \
+            -DQt6_DIR=/mingw64/lib/cmake/Qt6
+
+      - name: Build
+        run: cmake --build build/windows --parallel $(nproc)
+
+      - name: Test
+        run: ctest --test-dir build/windows --output-on-failure
