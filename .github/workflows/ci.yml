@@ -135,7 +135,6 @@ jobs:
             mingw-w64-x86_64-qt6-declarative
             mingw-w64-x86_64-qt6-svg
             zip
-            pandoc
 
       - name: Configure
         run: |

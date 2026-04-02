@@ -34,4 +34,6 @@ target_include_directories(anyfile_tests PRIVATE
 # Register with CTest so `ctest` picks them up
 include(CTest)
 include(Catch)
-catch_discover_tests(anyfile_tests)
+catch_discover_tests(anyfile_tests
+    SKIP_RETURN_CODE 4
+)
