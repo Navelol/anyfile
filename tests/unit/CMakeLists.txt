@@ -35,5 +35,6 @@ target_include_directories(anyfile_tests PRIVATE
 include(CTest)
 include(Catch)
 catch_discover_tests(anyfile_tests
-    SKIP_RETURN_CODE 4
+    PROPERTIES
+        SKIP_RETURN_CODE 4
 )
