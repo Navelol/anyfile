@@ -18,7 +18,10 @@ qt_standard_project_setup()
 # QTP0004: require qmldir files for each extra QML directory.
 # Setting NEW adopts the recommended behavior and silences the warnings.
 qt_policy(SET QTP0001 NEW)
-qt_policy(SET QTP0004 NEW)
+# QTP0004 was introduced in Qt 6.7 — guard so 6.6.x builds don't fail.
+if(Qt6Core_VERSION VERSION_GREATER_EQUAL "6.7.0")
+    qt_policy(SET QTP0004 NEW)
+endif()
 
 # ── GUI executable ────────────────────────────────────────────────────────────
 # Platform-specific resource files:

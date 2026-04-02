@@ -348,11 +348,15 @@ private:
         reg("lit",  Category::Ebook, "application/x-ms-reader");
 
         // ── Build MIME → Format reverse map ──────────────────────────────────
-        // (preferred canonical ext per MIME — first one registered wins)
-        for (auto& [ext, f] : m_map) {
-            if (!m_mimeMap.count(f.mimeType))
-                m_mimeMap[f.mimeType] = f;
-        }
+        // Iteration order of unordered_map is non-deterministic, so "first wins"
+        // is unreliable.  Build the map unconditionally, then overwrite with the
+        // canonical extension for any MIME type that has multiple aliases.
+        for (auto& [ext, f] : m_map)
+            m_mimeMap[f.mimeType] = f;
+
+        // Canonical overrides for aliased MIME types.
+        if (m_map.count("jpg"))  m_mimeMap["image/jpeg"] = m_map.at("jpg");
+        if (m_map.count("tiff")) m_mimeMap["image/tiff"] = m_map.at("tiff");
 
         // ── Conversion target map ─────────────────────────────────────────────
         // Images

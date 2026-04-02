@@ -72,6 +72,8 @@ private:
             for (const auto& component : fs::path(archive_entry_pathname(entry))) {
                 std::string s = component.string();
                 if (s == ".." || s == "/" || s == "\\") continue;
+                // Skip Windows drive letters ("C:", "D:", etc.)
+                if (s.size() == 2 && std::isalpha((unsigned char)s[0]) && s[1] == ':') continue;
                 clean /= component;
             }
             if (clean.empty()) continue;
