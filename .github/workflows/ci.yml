@@ -40,7 +40,7 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-          modules: 'qtquick3d'
+          modules: 'qtquick3d qtsvg'
           cache: true
 
       - name: Configure

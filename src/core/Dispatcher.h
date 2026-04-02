@@ -270,8 +270,15 @@ private:
         char suffix[16];
         std::snprintf(suffix, sizeof(suffix), "%06x", dist(gen));
 
+        // On POSIX a leading dot makes the temp file hidden; Windows doesn't
+        // support this convention so we omit the dot there.
+#ifdef _WIN32
+        std::string tempName =
+            target.stem().string() + ".tmp_" + suffix + target.extension().string();
+#else
         std::string tempName =
             "." + target.stem().string() + ".tmp_" + suffix + target.extension().string();
+#endif
 
         return target.parent_path() / tempName;
     }

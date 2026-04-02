@@ -173,7 +173,7 @@ private:
             // Write file contents
             std::ifstream f(filePath.string(), std::ios::binary);
             while ((f.read(buf.data(), buf.size()), f.gcount() > 0))
-                archive_write_data(a, buf.data(), f.gcount());
+                archive_write_data(a, buf.data(), static_cast<size_t>(f.gcount()));
 
             archive_entry_free(entry);
         }

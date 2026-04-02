@@ -39,7 +39,7 @@ inline fs::path makeTempDir(const std::string& prefix) {
     fs::create_directories(p);
     return p;
 #else
-    std::string tmpl = (fs::temp_directory_path() / (prefix + "XXXXXXXX")).string();
+    std::string tmpl = (fs::temp_directory_path() / (prefix + "XXXXXX")).string();
     char* result = mkdtemp(tmpl.data());
     if (!result) {
         // Fallback if mkdtemp fails (shouldn't happen with valid /tmp)

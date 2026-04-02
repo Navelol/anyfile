@@ -219,30 +219,57 @@ private:
             p += static_cast<char>(std::tolower(c));
         std::replace(p.begin(), p.end(), '\\', '/');
 
+        // Block UNC paths (\\server\share → //server/share after normalisation).
+        // File conversion has no business touching network shares.
+        if (p.starts_with("//"))
+            return "Access to UNC network paths is not permitted: "
+                 + canonical.string();
+
+        // Extract the path component after the drive root (e.g. "c:/windows/…"
+        // → "/windows/…") so that the same blocked-directory names apply
+        // regardless of which drive letter Windows is installed on.
+        bool hasDrive = (p.size() >= 3
+                      && std::isalpha(static_cast<unsigned char>(p[0]))
+                      && p[1] == ':' && p[2] == '/');
+        const std::string pathAfterDrive = hasDrive ? p.substr(2) : p;
+
         // These directories contain OS binaries, system config, and other
         // files that file-conversion software has no business touching.
+        // Checked against pathAfterDrive so they match on any drive letter.
         static const char* const BLOCKED[] = {
-            "c:/windows",
-            "c:/program files",
-            "c:/program files (x86)",
-            "c:/programdata",
+            "/windows",
+            "/program files",
+            "/program files (x86)",
+            "/programdata",
             nullptr
         };
         for (int i = 0; BLOCKED[i]; ++i) {
             std::string b = BLOCKED[i];
-            if (p == b || p.starts_with(b + '/'))
+            if (pathAfterDrive == b || pathAfterDrive.starts_with(b + '/'))
                 return "Access to system directory is not permitted: "
                      + canonical.string();
         }
 
-        // User-profile directories (C:\Users\...) are only blocked in desktop
+        // User-profile directories (X:\Users\…) are only blocked in desktop
         // mode (no sandbox). In sandbox mode the sandbox check above already
-        // restricts access; blocking C:\Users here would prevent a sandbox
+        // restricts access; blocking X:\Users here would prevent a sandbox
         // that legitimately lives under a user profile from working.
+        // USERPROFILE is checked to allow the current user's own home tree.
         if (!get_config().sandboxRoot.has_value()) {
-            if (p.starts_with("c:/users/"))
-                return "Access to user profile directories is not permitted: "
-                     + canonical.string();
+            if (hasDrive && pathAfterDrive.starts_with("/users/")) {
+                const char* userProfileRaw = std::getenv("USERPROFILE");
+                std::string ownHome;
+                if (userProfileRaw) {
+                    for (unsigned char c : std::string(userProfileRaw))
+                        ownHome += static_cast<char>(std::tolower(c));
+                    std::replace(ownHome.begin(), ownHome.end(), '\\', '/');
+                }
+                bool isOwnHome = !ownHome.empty() &&
+                                 (p == ownHome || p.starts_with(ownHome + '/'));
+                if (!isOwnHome)
+                    return "Access to other users' home directories is not permitted: "
+                         + canonical.string();
+            }
         }
 
 #elif defined(__APPLE__)

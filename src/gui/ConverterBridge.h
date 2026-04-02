@@ -367,6 +367,11 @@ public:
 #ifdef __APPLE__
                 {"H.264 VideoToolbox",   "GPU-accelerated H.264 · Apple Silicon/Intel", "h264_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
                 {"H.265 VideoToolbox",   "GPU-accelerated HEVC · Apple Silicon/Intel",  "hevc_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
+#elif defined(__linux__)
+                {"H.264 NVENC",          "GPU H.264 · NVIDIA only",                    "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 NVENC",          "GPU H.265 · NVIDIA only",                    "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.264 VA-API",         "GPU H.264 · AMD/Intel/NVIDIA (VA-API)",       "h264_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 VA-API",         "GPU H.265 · AMD/Intel/NVIDIA (VA-API)",       "hevc_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
 #else
                 {"H.264 NVENC",          "GPU-accelerated H.264 · NVIDIA only",         "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
                 {"H.265 NVENC",          "GPU-accelerated HEVC · NVIDIA only",          "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
@@ -383,9 +388,14 @@ public:
 #ifdef __APPLE__
                 {"H.264 VideoToolbox",   "GPU H.264 · Apple Silicon/Intel",             "h264_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
                 {"H.265 VideoToolbox",   "GPU HEVC · Apple Silicon/Intel",              "hevc_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
+#elif defined(__linux__)
+                {"H.264 NVENC",          "GPU H.264 · NVIDIA only",                    "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 NVENC",          "GPU H.265 · NVIDIA only",                    "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.264 VA-API",         "GPU H.264 · AMD/Intel/NVIDIA (VA-API)",       "h264_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 VA-API",         "GPU H.265 · AMD/Intel/NVIDIA (VA-API)",       "hevc_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
 #else
                 {"H.264 NVENC",          "GPU H.264 · NVIDIA only",                     "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
-                {"H.265 NVENC",          "GPU HEVC · NVIDIA only",                      "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 NVENC",          "GPU H.265 · NVIDIA only",                     "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
 #endif
             }},
             {"webm", PL{
