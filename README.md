@@ -154,6 +154,39 @@ anyfile input.mp4 output.webm --vcodec libvpx-vp9 --vbr2-target 10M --vbr2-max 1
 
 The Qt6 GUI provides drag-and-drop file conversion with a format browser grouped by category, batch folder mode with per-file mapping rules, an advanced encoding panel with codec presets, and real-time progress. Conversions run asynchronously and can be cancelled mid-flight.
 
+### Running on macOS
+
+After building with `--gui`, the app bundle is at `build/macos/bin/anyfile_gui.app`.
+
+**From Finder** — double-click `anyfile_gui.app`, or drag it into `/Applications` for permanent installation.
+
+**From the terminal:**
+
+```bash
+open build/macos/bin/anyfile_gui.app
+```
+
+#### Gatekeeper / "unidentified developer" warning
+
+Locally built `.app` bundles are ad-hoc signed (no Apple Developer ID). macOS may block the first launch with a Gatekeeper warning. To allow it:
+
+1. **Right-click** (or Control-click) the app and choose **Open**.
+2. Click **Open** in the confirmation dialog.
+
+macOS remembers this choice — subsequent launches work normally. Alternatively, remove the quarantine attribute from the terminal:
+
+```bash
+xattr -cr build/macos/bin/anyfile_gui.app
+```
+
+#### Producing a DMG for distribution
+
+```bash
+./scripts/build_macos.sh --dmg
+```
+
+This builds the GUI, runs `macdeployqt` to bundle all Qt frameworks, ad-hoc signs the result, and packages everything into a drag-to-install DMG at `build/macos/Anyfile.dmg` with a SHA-256 checksum alongside it.
+
 ---
 
 ## How it works
