@@ -20,6 +20,7 @@ add_executable(anyfile_tests
     test_format_registry.cpp
     test_process.cpp
     test_dispatcher.cpp
+    test_integration.cpp
 )
 
 target_link_libraries(anyfile_tests PRIVATE

@@ -99,7 +99,7 @@ if(BUILD_TESTS)
 endif()
 
 if(BUILD_GUI)
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Qml)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Qml Widgets Svg)
     add_subdirectory(src/gui)
 endif()
 

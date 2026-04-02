@@ -2,6 +2,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QIcon>
+#include <QTimer>
 #include <QtQml>
 #include <QQuickStyle>
 
@@ -16,6 +17,8 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("Anyfile");
     app.setApplicationVersion("0.1");
     app.setOrganizationName("Anyfile");
+    // Window-frame icon (all platforms). On macOS the dock icon comes from
+    // the .icns bundle resource set via MACOSX_BUNDLE_ICON_FILE in CMake.
     app.setWindowIcon(QIcon(":/icons/app.png"));
 
     // Register bridge as a QML type
@@ -32,6 +35,12 @@ int main(int argc, char* argv[]) {
                      &app, [](){ QCoreApplication::exit(-1); },
                      Qt::QueuedConnection);
     engine.load(url);
+
+    // --smoke-test: verify QML loads successfully, then exit.
+    // Used by CI to confirm the GUI launches without crashing.
+    if (app.arguments().contains("--smoke-test")) {
+        QTimer::singleShot(2000, &app, []{ QCoreApplication::exit(0); });
+    }
 
     return app.exec();
 }

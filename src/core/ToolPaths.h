@@ -95,7 +95,7 @@ public:
 #elif defined(__APPLE__)
 // ── macOS ─────────────────────────────────────────────────────────────────────
 #  include <mach-o/dyld.h>  // _NSGetExecutablePath
-#  include <climits>        // PATH_MAX
+#  include <climits>        // PATH_MAX  (used by _NSGetExecutablePath buffer)
 #  include <cstdlib>        // getenv, setenv
 #  include <string>
 #  include <vector>
@@ -154,6 +154,26 @@ public:
         }
         if (!prefix.empty()) {
             prependToPath(prefix);
+        }
+
+        // ── Stage 3: macOS cask applications (LibreOffice, Calibre) ──────
+        // These are GUI apps installed to /Applications/ and don't have
+        // binaries on the Homebrew bin path. We add their MacOS dirs
+        // so soffice and ebook-convert resolve at runtime.
+        static const char* const CASK_BINS[] = {
+            "/Applications/LibreOffice.app/Contents/MacOS",
+            "/Applications/calibre.app/Contents/MacOS",
+            nullptr
+        };
+        std::string caskPrefix;
+        for (int i = 0; CASK_BINS[i]; ++i) {
+            if (fs::exists(CASK_BINS[i])) {
+                if (!caskPrefix.empty()) caskPrefix += ':';
+                caskPrefix += CASK_BINS[i];
+            }
+        }
+        if (!caskPrefix.empty()) {
+            prependToPath(caskPrefix);
         }
     }
 

@@ -115,6 +115,7 @@ if [ ! -f "$ICNS_OUT" ]; then
         done
 
         iconutil -c icns "$ICONSET_DIR" -o "$ICNS_OUT"
+        rm -rf "$(dirname "$ICONSET_DIR")"
         ok "Generated $ICNS_OUT"
     fi
 else

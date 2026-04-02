@@ -258,6 +258,9 @@ private:
             "/System",              // SIP-protected OS core — never writable
             "/Library/Preferences", // System-wide preference plists
             "/Library/Application Support/com.apple", // Apple system support
+            "/Library/LaunchDaemons",  // Root-level persistent daemons
+            "/Library/LaunchAgents",   // Per-user persistent agents
+            "/Library/StartupItems",   // Legacy startup items
             "/private/etc",         // Real /etc (symlink target)
             "/private/var/db",      // System databases (kext cache, etc.)
             "/private/var/run",     // Runtime state (PID files, sockets)

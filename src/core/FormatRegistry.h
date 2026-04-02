@@ -78,19 +78,25 @@ private:
     // ── Magic-number detection ────────────────────────────────────────────────
     std::optional<Format> detectByMagic(const fs::path& path) const {
 #if ANYFILE_HAS_LIBMAGIC
-        // thread_local cookie: magic_load (parses ~1MB database) runs once per
-        // thread instead of once per file.  Huge speedup for batch/folder scans.
-        thread_local magic_t cookie = [] {
-            magic_t c = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
-            if (c && magic_load(c, nullptr) != 0) {
-                magic_close(c);
-                c = nullptr;
+        // RAII wrapper ensures magic_close() runs when the thread exits,
+        // preventing the leak the old bare thread_local magic_t had.
+        struct MagicCookie {
+            magic_t handle;
+            MagicCookie() {
+                handle = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
+                if (handle && magic_load(handle, nullptr) != 0) {
+                    magic_close(handle);
+                    handle = nullptr;
+                }
             }
-            return c;
-        }();
-        if (!cookie) return std::nullopt;
+            ~MagicCookie() { if (handle) magic_close(handle); }
+            MagicCookie(const MagicCookie&) = delete;
+            MagicCookie& operator=(const MagicCookie&) = delete;
+        };
+        thread_local MagicCookie cookie;
+        if (!cookie.handle) return std::nullopt;
 
-        const char* mime = magic_file(cookie, path.string().c_str());
+        const char* mime = magic_file(cookie.handle, path.string().c_str());
         if (!mime) return std::nullopt;
         return mimeToFormat(std::string(mime));
 #else

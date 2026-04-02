@@ -24,8 +24,7 @@ public:
 
         if (job.onProgress) job.onProgress(0.05f, "Rendering PDF pages...");
 
-        fs::path tempDir = makeTempName("anyfile_pdf_");
-        fs::create_directories(tempDir);
+        fs::path tempDir = makeTempDir("anyfile_pdf_");
 
         fs::path pagePrefix = tempDir / "page";
 

@@ -118,12 +118,14 @@ target_include_directories(anyfile_gui PRIVATE
 # MACOSX_BUNDLE_ICON_FILE — the .icns file placed in Contents/Resources/.
 # WIN32_EXECUTABLE     — suppress the Windows console window.
 set_target_properties(anyfile_gui PROPERTIES
-    MACOSX_BUNDLE                   TRUE
-    MACOSX_BUNDLE_BUNDLE_NAME       "Anyfile"
-    MACOSX_BUNDLE_BUNDLE_VERSION    "0.1"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1"
-    MACOSX_BUNDLE_ICON_FILE         "app.icns"
-    WIN32_EXECUTABLE                TRUE
+    MACOSX_BUNDLE                       TRUE
+    MACOSX_BUNDLE_BUNDLE_NAME           "Anyfile"
+    MACOSX_BUNDLE_GUI_IDENTIFIER        "com.anyfile.converter"
+    MACOSX_BUNDLE_BUNDLE_VERSION        "0.1"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING  "0.1"
+    MACOSX_BUNDLE_ICON_FILE             "app.icns"
+    MACOSX_BUNDLE_INFO_STRING           "Universal file converter"
+    WIN32_EXECUTABLE                    TRUE
 )
 
 # ── Windows: deploy Qt DLLs next to the exe (requires windeployqt) ────────────
@@ -172,10 +174,9 @@ if(APPLE)
         # Step 2: ad-hoc re-sign (--sign -).  No Apple Developer account needed
         #         for local development.
         add_custom_command(TARGET anyfile_gui POST_BUILD
-            COMMAND xattr -cr "$<TARGET_BUNDLE_DIR:anyfile_gui>"
-            COMMAND codesign --force --deep --sign -
+            COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/sign_bundle.sh"
                     "$<TARGET_BUNDLE_DIR:anyfile_gui>"
-            COMMENT "Signing .app bundle..."
+            COMMENT "Signing .app bundle (ad-hoc)..."
             VERBATIM
         )
     else()

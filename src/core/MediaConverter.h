@@ -264,8 +264,7 @@ private:
 
         if (job.onProgress) job.onProgress(0.1f, "Extracting frames...");
 
-        fs::path tempDir = makeTempName("anyfile_seq_");
-        fs::create_directories(tempDir);
+        fs::path tempDir = makeTempDir("anyfile_seq_");
 
         fs::path framePattern = tempDir / ("frame%04d." + outExt);
 

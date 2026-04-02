@@ -30,7 +30,8 @@ jobs:
             libavcodec-dev libavformat-dev libavutil-dev \
             libswscale-dev libswresample-dev \
             libassimp-dev libarchive-dev libmagic-dev \
-            libgl1-mesa-dev
+            libgl1-mesa-dev \
+            ffmpeg poppler-utils pandoc
 
       - name: Install Qt 6.6
         uses: jurplel/install-qt-action@v4
@@ -56,6 +57,10 @@ jobs:
       - name: Test
         run: ctest --test-dir build/linux --output-on-failure
 
+      - name: GUI smoke test
+        run: |
+          QT_QPA_PLATFORM=offscreen ./build/linux/bin/anyfile_gui --smoke-test
+
   # ── macOS ──────────────────────────────────────────────────────────────────
   build-macos:
     name: macOS (Apple Clang)
@@ -72,6 +77,13 @@ jobs:
           brew update
           brew bundle --file=Brewfile
 
+      - name: Verify runtime tools
+        run: |
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+          pdftoppm -v 2>&1 | head -1 || true
+          pandoc --version | head -1
+
       - name: Configure
         run: |
           cmake -S . -B build/macos \
@@ -85,6 +97,10 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build/macos --output-on-failure
+
+      - name: GUI smoke test
+        run: |
+          QT_QPA_PLATFORM=offscreen ./build/macos/bin/anyfile_gui.app/Contents/MacOS/anyfile_gui --smoke-test
 
   # ── Windows ────────────────────────────────────────────────────────────────
   build-windows:
@@ -132,3 +148,7 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build/windows --output-on-failure
+
+      - name: GUI smoke test
+        run: |
+          QT_QPA_PLATFORM=offscreen ./build/windows/bin/anyfile_gui.exe --smoke-test
