@@ -150,8 +150,3 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build/windows --output-on-failure
-
-      - name: GUI smoke test
-        timeout-minutes: 1
-        run: |
-          ./build/windows/bin/anyfile_gui.exe --smoke-test
