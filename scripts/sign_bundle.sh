@@ -15,9 +15,14 @@ fi
 xattr -cr "$BUNDLE"
 find "$BUNDLE" -name '._*' -delete 2>/dev/null || true
 
-# Ad-hoc sign. --deep re-signs nested frameworks and dylibs.
-# For notarized distribution, replace `--sign -` with a Developer ID.
-codesign --force --deep --sign - "$BUNDLE" 2>&1 || {
+# Sign individual dylibs and frameworks bottom-up first.
+# --deep is unreliable — it doesn't guarantee correct signing order,
+# which leaves nested libraries with invalid signatures.
+find "$BUNDLE" -name '*.dylib' -print0 | xargs -0 -n1 codesign --force --sign - 2>&1 || true
+find "$BUNDLE" -name '*.framework' -print0 | xargs -0 -n1 codesign --force --sign - 2>&1 || true
+
+# Sign the top-level bundle last.
+codesign --force --sign - "$BUNDLE" 2>&1 || {
     echo "WARNING: ad-hoc signing failed (non-fatal for dev builds)"
     exit 0
 }

@@ -12,23 +12,36 @@ concurrency:
 
 jobs:
   # ── Linux ──────────────────────────────────────────────────────────────────
-  # Uses a pre-built Docker image with Qt 6.6.3 and all deps baked in.
-  # Image is built by .github/workflows/docker.yml — trigger that workflow
-  # (or push a change to docker/linux-builder/Dockerfile) to rebuild it.
   build-linux:
     name: Linux (GCC)
     runs-on: ubuntu-22.04
-    container:
-      image: ghcr.io/navelol/everyfile-linux-builder:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build pkg-config \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev \
+            libassimp-dev libarchive-dev libmagic-dev \
+            libgl1-mesa-dev libvulkan-dev \
+            ffmpeg poppler-utils pandoc
+
+      - name: Install Qt 6.6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.*'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: 'qtquick3d'
+          cache: true
 
       - name: Configure
         run: |
@@ -121,6 +134,8 @@ jobs:
             mingw-w64-x86_64-qt6-base
             mingw-w64-x86_64-qt6-declarative
             mingw-w64-x86_64-qt6-svg
+            zip
+            mingw-w64-x86_64-pandoc
 
       - name: Configure
         run: |
