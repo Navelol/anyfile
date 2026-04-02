@@ -101,7 +101,7 @@ jobs:
 
       - name: GUI smoke test
         run: |
-          QT_QPA_PLATFORM=offscreen ./build/macos/bin/anyfile_gui.app/Contents/MacOS/anyfile_gui --smoke-test
+          ./build/macos/bin/anyfile_gui.app/Contents/MacOS/anyfile_gui --smoke-test
 
   # ── Windows ────────────────────────────────────────────────────────────────
   build-windows:
@@ -135,7 +135,7 @@ jobs:
             mingw-w64-x86_64-qt6-declarative
             mingw-w64-x86_64-qt6-svg
             zip
-            mingw-w64-x86_64-pandoc
+            pandoc
 
       - name: Configure
         run: |
