@@ -152,5 +152,6 @@ jobs:
         run: ctest --test-dir build/windows --output-on-failure
 
       - name: GUI smoke test
+        timeout-minutes: 1
         run: |
-          QT_QPA_PLATFORM=offscreen ./build/windows/bin/anyfile_gui.exe --smoke-test
+          ./build/windows/bin/anyfile_gui.exe --smoke-test
