@@ -23,11 +23,11 @@ int main(int argc, char* argv[]) {
 
     QQmlApplicationEngine engine;
 
-    engine.addImportPath("qrc:/");
+    engine.addImportPath("qrc:/qt/qml");
     // Allow QML modules to be found next to the executable (e.g. deployed bin/qml/)
     engine.addImportPath(QCoreApplication::applicationDirPath() + "/qml");
 
-    const QUrl url(u"qrc:/Anyfile/qml/Main.qml"_s);
+    const QUrl url(u"qrc:/qt/qml/Anyfile/qml/Main.qml"_s);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
                      &app, [](){ QCoreApplication::exit(-1); },
                      Qt::QueuedConnection);
