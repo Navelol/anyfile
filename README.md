@@ -1,6 +1,5 @@
 <img width="300" height="" alt="Asset 1" src="https://github.com/user-attachments/assets/686d92c8-d81b-4cce-b46b-acecb24cbed9" />
 
-
 A universal file converter that handles **100+ formats** across images, video, audio, 3D models, archives, documents, ebooks, and data formats. Ships as both a CLI tool and a Qt6 GUI app.
 
 Built in C++20 with FFmpeg, Assimp, libarchive, LibreOffice, Pandoc, and Calibre under the hood.
@@ -33,11 +32,31 @@ Built in C++20 with FFmpeg, Assimp, libarchive, LibreOffice, Pandoc, and Calibre
 Grab the latest release from the [Releases](https://github.com/Navelol/everyfile/releases) page:
 
 - **Windows** — `Anyfile-windows-x86_64.zip` (extract and run)
+- **macOS** — `Anyfile.dmg` (drag to Applications)
 - **Linux** — `Anyfile-x86_64.AppImage` (chmod +x and run)
 
 ### Build from Source
 
-#### Dependencies
+#### macOS
+
+All dependencies are managed through Homebrew. From the project root:
+
+```bash
+brew bundle
+./scripts/build_macos.sh --gui
+```
+
+`brew bundle` reads the `Brewfile` and installs everything at once — cmake, Qt6, FFmpeg, and the rest. The build script configures, compiles, and runs `macdeployqt` to produce a self-contained `.app` bundle, then ad-hoc signs it so macOS doesn't reject it on launch.
+
+To also produce a distributable DMG:
+
+```bash
+./scripts/build_macos.sh --gui --dmg
+```
+
+Output: `build/macos/bin/anyfile_gui.app` and optionally `build/macos/Anyfile.dmg`.
+
+#### Linux
 
 <details>
 <summary><b>Ubuntu / Debian</b></summary>
@@ -61,8 +80,16 @@ sudo pacman -S --needed cmake ninja base-devel \
 ```
 </details>
 
+```bash
+./scripts/build_linux.sh          # CLI only
+./scripts/build_linux.sh --gui    # CLI + GUI
+./scripts/build_linux.sh --appimage
+```
+
+#### Windows
+
 <details>
-<summary><b>Windows (MSYS2 MinGW64)</b></summary>
+<summary><b>MSYS2 MinGW64</b></summary>
 
 ```bash
 pacman -S --needed \
@@ -73,23 +100,11 @@ pacman -S --needed \
 ```
 </details>
 
-#### Build Commands
-
-```bash
-# Linux — CLI only
-./scripts/build_linux.sh
-
-# Linux — CLI + GUI
-./scripts/build_linux.sh --gui
-
-# Linux — Build AppImage
-./scripts/build_linux.sh --appimage
-
-# Windows
-powershell scripts/build_windows.ps1 -Gui
+```powershell
+./scripts/build_windows.ps1 -Gui
 ```
 
-Output: `build/{linux,windows}/bin/`
+Output for all platforms: `build/{macos,linux,windows}/bin/`
 
 ---
 
@@ -112,8 +127,6 @@ anyfile --help
 ```
 
 ### Encoding Options
-
-Control video/audio encoding when converting media:
 
 ```bash
 # Codec & quality
@@ -139,38 +152,50 @@ anyfile input.mp4 output.webm --vcodec libvpx-vp9 --vbr2-target 10M --vbr2-max 1
 
 ## GUI
 
-The Qt6 GUI provides drag-and-drop file conversion with:
+The Qt6 GUI provides drag-and-drop file conversion with a format browser grouped by category, batch folder mode with per-file mapping rules, an advanced encoding panel with codec presets, and real-time progress. Conversions run asynchronously and can be cancelled mid-flight.
 
-- **Format browser** grouped by category with search/filter
-- **Batch folder mode** with per-file format mapping rules
-- **Advanced encoding panel** with codec presets (H.264, H.265, VP9, AV1, etc.)
-- **Real-time progress** with file size and timing info
-- Async, cancellable conversions
+### Running on macOS
+
+After building with `--gui`, the app bundle is at `build/macos/bin/anyfile_gui.app`.
+
+**From Finder** — double-click `anyfile_gui.app`, or drag it into `/Applications` for permanent installation.
+
+**From the terminal:**
+
+```bash
+open build/macos/bin/anyfile_gui.app
+```
+
+#### Gatekeeper / "unidentified developer" warning
+
+Locally built `.app` bundles are ad-hoc signed (no Apple Developer ID). macOS may block the first launch with a Gatekeeper warning. To allow it:
+
+1. **Right-click** (or Control-click) the app and choose **Open**.
+2. Click **Open** in the confirmation dialog.
+
+macOS remembers this choice — subsequent launches work normally. Alternatively, remove the quarantine attribute from the terminal:
+
+```bash
+xattr -cr build/macos/bin/anyfile_gui.app
+```
+
+#### Producing a DMG for distribution
+
+```bash
+./scripts/build_macos.sh --dmg
+```
+
+This builds the GUI, runs `macdeployqt` to bundle all Qt frameworks, ad-hoc signs the result, and packages everything into a drag-to-install DMG at `build/macos/Anyfile.dmg` with a SHA-256 checksum alongside it.
 
 ---
 
-## Architecture
+## How it works
 
-```
-src/
-├── core/                    ← shared conversion library
-│   ├── FormatRegistry.h     ← format detection (magic bytes + libmagic + extension)
-│   ├── Dispatcher.h         ← routes jobs, atomic writes, disk space checks
-│   ├── MediaConverter.h     ← FFmpeg (images, video, audio)
-│   ├── ModelConverter.h     ← Assimp (3D models)
-│   ├── DataConverter.h      ← JSON pivot (JSON, XML, YAML, CSV, TOML, INI, ENV)
-│   ├── ArchiveConverter.h   ← libarchive (extract + repack)
-│   ├── DocumentConverter.h  ← LibreOffice + Pandoc + Calibre
-│   └── PdfRenderer.h        ← PDF → images via poppler
-├── cli/                     ← terminal interface
-└── gui/                     ← Qt6 QML interface
-```
+Every conversion goes through a central dispatcher that detects the input format (magic bytes first, extension as fallback), selects the right backend, checks available disk space, writes to a temp file, and renames atomically on success. Nothing touches the output path until the conversion is confirmed complete.
 
-All conversions are **atomic** — output goes to a temp file first, renamed on success, cleaned up on failure. Disk space is checked before conversion begins.
+Converting a video or GIF to an image format extracts the full frame sequence and bundles it into a ZIP, consistent with how PDF → image exports work.
 
-Converting a video or GIF to an image format (PNG, JPG, WebP, etc.) extracts the full frame sequence and bundles it into a `.zip`, matching the behavior of PDF → image exports.
-
-Path validation blocks conversions to/from sensitive OS directories. An optional sandbox mode restricts all I/O to a configured root directory for server deployments.
+Path validation blocks access to OS-critical directories on all platforms. For server deployments there's an optional sandbox mode that restricts all I/O to a configured root directory.
 
 ---
 
@@ -180,13 +205,13 @@ Some format categories require external tools at runtime:
 
 | Tool | Used For | Required? |
 |------|----------|-----------|
-| FFmpeg | Images, video, audio | Yes (core) |
+| FFmpeg | Images, video, audio | Yes |
 | LibreOffice | Office documents, PDF | For document conversion |
 | Pandoc | Markdown, HTML, RST, TeX | For text/markup conversion |
 | Calibre | Ebook formats | For ebook conversion |
 | poppler-utils | PDF → image rendering | For PDF image extraction |
 
-On Windows, these can be bundled in a `tools/` directory alongside the binary. On Linux, install them from your package manager.
+On Windows and macOS, these can be bundled in a `tools/` directory alongside the binary so the app is fully self-contained. On Linux, install them through your package manager.
 
 ---
 

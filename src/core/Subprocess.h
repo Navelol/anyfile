@@ -68,7 +68,7 @@ public:
     }
 
     // ── Poll — returns true if the process has exited ─────────────────────────
-    bool finished() const {
+    bool finished() {
 #ifdef _WIN32
         if (m_handle == INVALID_HANDLE_VALUE) return true;
         return WaitForSingleObject(m_handle, 0) == WAIT_OBJECT_0;
@@ -78,16 +78,15 @@ public:
         pid_t r = waitpid(m_pid, &status, WNOHANG);
         if (r == m_pid) {
             // Store exit code and mark done
-            const_cast<Process*>(this)->m_exitCode =
-                WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-            const_cast<Process*>(this)->m_pid = -1;
+            m_exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            m_pid = -1;
             return true;
         }
         return false;
 #endif
     }
 
-    bool running() const { return !finished(); }
+    bool running() { return !finished(); }
 
     // ── Kill the process ──────────────────────────────────────────────────────
     // Sends SIGKILL on Linux, TerminateProcess on Windows.
@@ -97,8 +96,20 @@ public:
         if (m_handle != INVALID_HANDLE_VALUE)
             TerminateProcess(m_handle, 1);
 #else
-        if (m_pid > 0)
-            kill(m_pid, SIGKILL);
+        if (m_pid > 0) {
+            // Try graceful termination first — lets ffmpeg clean up temp files
+            ::kill(m_pid, SIGTERM);
+            for (int i = 0; i < 10; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                int status;
+                if (waitpid(m_pid, &status, WNOHANG) == m_pid) {
+                    m_exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+                    m_pid = -1;
+                    return;
+                }
+            }
+            ::kill(m_pid, SIGKILL);  // escalate after 500ms
+        }
 #endif
     }
 

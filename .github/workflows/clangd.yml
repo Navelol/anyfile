@@ -1,0 +1,97 @@
+name: Clangd Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: clangd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clangd-check:
+    name: Clangd Warnings
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build pkg-config \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev \
+            libassimp-dev libarchive-dev libmagic-dev \
+            libgl1-mesa-dev \
+            clangd clang-tidy
+
+      - name: Install Qt 6.6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.*'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: 'qtquick3d'
+          cache: true
+
+      - name: Configure (generate compile_commands.json)
+        run: |
+          cmake -S . -B build/linux \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBUILD_GUI=ON \
+            -DBUILD_TESTS=ON
+
+      - name: Run clangd diagnostics
+        run: |
+          set +e
+          EXIT_CODE=0
+
+          # Find all project source files (exclude thirdparty)
+          SOURCE_FILES=$(find src tests -name '*.cpp' -o -name '*.h' | sort)
+
+          echo "::group::Source files to check"
+          echo "$SOURCE_FILES"
+          echo "::endgroup::"
+
+          for file in $SOURCE_FILES; do
+            echo "::group::Checking $file"
+            OUTPUT=$(clangd --check="$file" \
+              --compile-commands-dir=build/linux \
+              --clang-tidy 2>&1)
+
+            echo "$OUTPUT"
+            echo "::endgroup::"
+
+            # Check for warnings or errors in the output
+            if echo "$OUTPUT" | grep -qE '(warning:|error:)'; then
+              echo "$OUTPUT" | grep -E '(warning:|error:)' | while IFS= read -r line; do
+                # Parse clangd output: file:line:col: severity: message
+                if [[ "$line" =~ ^([^:]+):([0-9]+):([0-9]+):\ (warning|error):\ (.+) ]]; then
+                  FILE_PATH="${BASH_REMATCH[1]}"
+                  LINE_NUM="${BASH_REMATCH[2]}"
+                  COL_NUM="${BASH_REMATCH[3]}"
+                  SEVERITY="${BASH_REMATCH[4]}"
+                  MESSAGE="${BASH_REMATCH[5]}"
+                  if [ "$SEVERITY" = "error" ]; then
+                    echo "::error file=$FILE_PATH,line=$LINE_NUM,col=$COL_NUM::$MESSAGE"
+                    EXIT_CODE=1
+                  else
+                    echo "::warning file=$FILE_PATH,line=$LINE_NUM,col=$COL_NUM::$MESSAGE"
+                  fi
+                fi
+              done
+            fi
+          done
+
+          # Fail on errors only, warnings are annotated but don't fail the build
+          exit $EXIT_CODE

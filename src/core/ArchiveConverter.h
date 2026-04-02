@@ -69,9 +69,11 @@ private:
         while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
             // Sanitize entry path to prevent zip-slip (path traversal) attacks.
             fs::path clean;
-            for (auto& component : fs::path(archive_entry_pathname(entry))) {
+            for (const auto& component : fs::path(archive_entry_pathname(entry))) {
                 std::string s = component.string();
                 if (s == ".." || s == "/" || s == "\\") continue;
+                // Skip Windows drive letters ("C:", "D:", etc.)
+                if (s.size() == 2 && std::isalpha((unsigned char)s[0]) && s[1] == ':') continue;
                 clean /= component;
             }
             if (clean.empty()) continue;
@@ -173,7 +175,7 @@ private:
             // Write file contents
             std::ifstream f(filePath.string(), std::ios::binary);
             while ((f.read(buf.data(), buf.size()), f.gcount() > 0))
-                archive_write_data(a, buf.data(), f.gcount());
+                archive_write_data(a, buf.data(), static_cast<size_t>(f.gcount()));
 
             archive_entry_free(entry);
         }

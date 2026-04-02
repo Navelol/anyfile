@@ -22,7 +22,12 @@ static void cleanup(const fs::path& p) {
 
 // Returns true if the tool is available on PATH
 static bool toolAvailable(const std::string& name) {
+#ifdef _WIN32
+    // "where /q" is the Windows equivalent of "which" — quiet mode, exit 0 if found
+    return Process::run("where", {"/q", name}) == 0;
+#else
     return Process::run("which", {name}) == 0;
+#endif
 }
 
 // ── Input validation ──────────────────────────────────────────────────────────

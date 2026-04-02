@@ -8,6 +8,10 @@
 #include <atomic>
 #include <random>
 #include <cstdio>
+#ifndef _WIN32
+#  include <cstdlib>   // mkdtemp (POSIX)
+#  include <unistd.h>  // mkdtemp fallback
+#endif
 
 namespace converter {
 
@@ -23,6 +27,28 @@ inline fs::path makeTempName(const std::string& prefix, const std::string& suffi
     char hex[16];
     std::snprintf(hex, sizeof(hex), "%08x", dist(gen));
     return fs::temp_directory_path() / (prefix + hex + suffix);
+}
+
+/// Creates a temporary directory atomically. Uses mkdtemp() on POSIX to
+/// prevent TOCTOU races where another process could claim the path between
+/// name generation and directory creation.
+inline fs::path makeTempDir(const std::string& prefix) {
+#ifdef _WIN32
+    // Windows: no mkdtemp; fall back to random name + create_directories
+    auto p = makeTempName(prefix);
+    fs::create_directories(p);
+    return p;
+#else
+    std::string tmpl = (fs::temp_directory_path() / (prefix + "XXXXXX")).string();
+    char* result = mkdtemp(tmpl.data());
+    if (!result) {
+        // Fallback if mkdtemp fails (shouldn't happen with valid /tmp)
+        auto p = makeTempName(prefix);
+        fs::create_directories(p);
+        return p;
+    }
+    return fs::path(result);
+#endif
 }
 
 // ── Format categories ─────────────────────────────────────────────────────────

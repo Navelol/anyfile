@@ -78,19 +78,25 @@ private:
     // ── Magic-number detection ────────────────────────────────────────────────
     std::optional<Format> detectByMagic(const fs::path& path) const {
 #if ANYFILE_HAS_LIBMAGIC
-        // thread_local cookie: magic_load (parses ~1MB database) runs once per
-        // thread instead of once per file.  Huge speedup for batch/folder scans.
-        thread_local magic_t cookie = [] {
-            magic_t c = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
-            if (c && magic_load(c, nullptr) != 0) {
-                magic_close(c);
-                c = nullptr;
+        // RAII wrapper ensures magic_close() runs when the thread exits,
+        // preventing the leak the old bare thread_local magic_t had.
+        struct MagicCookie {
+            magic_t handle;
+            MagicCookie() {
+                handle = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
+                if (handle && magic_load(handle, nullptr) != 0) {
+                    magic_close(handle);
+                    handle = nullptr;
+                }
             }
-            return c;
-        }();
-        if (!cookie) return std::nullopt;
+            ~MagicCookie() { if (handle) magic_close(handle); }
+            MagicCookie(const MagicCookie&) = delete;
+            MagicCookie& operator=(const MagicCookie&) = delete;
+        };
+        thread_local MagicCookie cookie;
+        if (!cookie.handle) return std::nullopt;
 
-        const char* mime = magic_file(cookie, path.string().c_str());
+        const char* mime = magic_file(cookie.handle, path.string().c_str());
         if (!mime) return std::nullopt;
         return mimeToFormat(std::string(mime));
 #else
@@ -342,11 +348,15 @@ private:
         reg("lit",  Category::Ebook, "application/x-ms-reader");
 
         // ── Build MIME → Format reverse map ──────────────────────────────────
-        // (preferred canonical ext per MIME — first one registered wins)
-        for (auto& [ext, f] : m_map) {
-            if (!m_mimeMap.count(f.mimeType))
-                m_mimeMap[f.mimeType] = f;
-        }
+        // Iteration order of unordered_map is non-deterministic, so "first wins"
+        // is unreliable.  Build the map unconditionally, then overwrite with the
+        // canonical extension for any MIME type that has multiple aliases.
+        for (auto& [ext, f] : m_map)
+            m_mimeMap[f.mimeType] = f;
+
+        // Canonical overrides for aliased MIME types.
+        if (m_map.count("jpg"))  m_mimeMap["image/jpeg"] = m_map.at("jpg");
+        if (m_map.count("tiff")) m_mimeMap["image/tiff"] = m_map.at("tiff");
 
         // ── Conversion target map ─────────────────────────────────────────────
         // Images

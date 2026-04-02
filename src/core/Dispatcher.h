@@ -11,9 +11,12 @@
 #include "PathValidator.h"
 #include <random>
 
-#ifdef __linux__
-#  include <fcntl.h>    // fallocate
+#if defined(__linux__) || defined(__APPLE__)
+#  include <fcntl.h>
 #  include <unistd.h>
+#endif
+#ifdef __APPLE__
+#  include <sys/fcntl.h>  // F_PREALLOCATE, fstore_t
 #endif
 
 namespace converter {
@@ -167,7 +170,7 @@ private:
         return "";
     }
 
-    // ── fallocate (Linux only) ────────────────────────────────────────────────
+    // ── Disk pre-allocation (Linux + macOS) ─────────────────────────────────
     // Pre-reserves `size` bytes for the file at `path`.
     // If the filesystem can't accommodate the reservation, this fails
     // immediately — before any conversion work has been done.
@@ -176,12 +179,19 @@ private:
 #ifdef __linux__
         int fd = open(path.string().c_str(), O_WRONLY | O_CREAT, 0644);
         if (fd < 0) return;
-        // fallocate returns -1 on failure (e.g. filesystem doesn't support it)
-        // — we silently ignore that and let the conversion proceed normally.
         fallocate(fd, 0, 0, static_cast<off_t>(size));
         close(fd);
+#elif defined(__APPLE__)
+        int fd = open(path.string().c_str(), O_WRONLY | O_CREAT, 0644);
+        if (fd < 0) return;
+        fstore_t store = {F_ALLOCATECONTIG, F_PEOFPOSMODE, 0, static_cast<off_t>(size), 0};
+        if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
+            store.fst_flags = F_ALLOCATEALL;  // fallback: non-contiguous
+            fcntl(fd, F_PREALLOCATE, &store);
+        }
+        ftruncate(fd, static_cast<off_t>(size));
+        close(fd);
 #endif
-        // Windows: no-op — fs::space() check is the only guard
         (void)path; (void)size;
     }
 
@@ -260,8 +270,15 @@ private:
         char suffix[16];
         std::snprintf(suffix, sizeof(suffix), "%06x", dist(gen));
 
+        // On POSIX a leading dot makes the temp file hidden; Windows doesn't
+        // support this convention so we omit the dot there.
+#ifdef _WIN32
+        std::string tempName =
+            target.stem().string() + ".tmp_" + suffix + target.extension().string();
+#else
         std::string tempName =
             "." + target.stem().string() + ".tmp_" + suffix + target.extension().string();
+#endif
 
         return target.parent_path() / tempName;
     }

@@ -1,0 +1,35 @@
+name: Build Docker Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+  workflow_dispatch:   # allow manual trigger for first-time setup
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  linux-builder:
+    name: Build linux-builder image
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/linux-builder
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/everyfile-linux-builder:latest

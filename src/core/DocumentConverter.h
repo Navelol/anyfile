@@ -11,6 +11,8 @@ class DocumentConverter {
 private:
 #ifdef _WIN32
     static constexpr const char* SOFFICE_BIN = "soffice";
+#elif defined(__APPLE__)
+    static constexpr const char* SOFFICE_BIN = "soffice";
 #else
     static constexpr const char* SOFFICE_BIN = "libreoffice";
 #endif
@@ -110,8 +112,7 @@ private:
         const std::string& inExt  = job.inputFormat.ext;
         const std::string& outExt = job.outputFormat.ext;
 
-        fs::path tempDir = makeTempName("anyfile_doc_");
-        fs::create_directories(tempDir);
+        fs::path tempDir = makeTempDir("anyfile_doc_");
 
         std::string filter = libreOfficeFilter(outExt);
         if (filter.empty()) {

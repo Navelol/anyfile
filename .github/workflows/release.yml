@@ -278,11 +278,46 @@ jobs:
           path: dist/*.zip
           if-no-files-found: error
 
+  # ── macOS DMG ───────────────────────────────────────────────────────────────
+  build-macos:
+    name: macOS Build
+    runs-on: macos-14  # Apple Silicon (M1) runner
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies via Homebrew
+        run: |
+          brew update
+          brew bundle --file=Brewfile
+
+      - name: Build DMG
+        run: |
+          chmod +x scripts/build_macos.sh
+          bash scripts/build_macos.sh --dmg --no-tests
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/macos/*.dmg
+          if-no-files-found: error
+
+      - name: Upload DMG checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-sha256
+          path: build/macos/*.sha256
+          if-no-files-found: warn
+
   # ── GitHub Release ───────────────────────────────────────────────────────────
   release:
     name: Publish Release
     runs-on: ubuntu-latest
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-macos]
     # Only publish a release on a tag push (not manual triggers)
     if: startsWith(github.ref, 'refs/tags/')
 
@@ -301,4 +336,6 @@ jobs:
           files: |
             artifacts/linux-appimage/*.AppImage
             artifacts/windows-zip/*.zip
+            artifacts/macos-dmg/*.dmg
+            artifacts/macos-dmg-sha256/*.sha256
           generate_release_notes: true

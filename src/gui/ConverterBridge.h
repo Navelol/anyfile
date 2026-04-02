@@ -307,6 +307,10 @@ public:
         return result;
     }
     // ── Native file picker (bypasses portal, reliably supports multi-select) ──
+    // TODO(sandbox): If macOS App Sandbox is ever adopted, QFileDialog may not
+    // have access to arbitrary paths. Switch to NSOpenPanel via Obj-C++ bridge
+    // or ensure Qt's native dialog is used with proper sandbox entitlements
+    // (com.apple.security.files.user-selected.read-write).
     Q_INVOKABLE QStringList pickFiles(const QString& title = "Select files") const {
         return QFileDialog::getOpenFileNames(nullptr, title);
     }
@@ -360,8 +364,18 @@ public:
                 {"H.265 · Balanced",     "CRF 20 ≈ H.264 22 · ~40% smaller file",      "libx265",    "aac",      "crf",  20, "320k", "",    ""},
                 {"H.265 · High Quality", "CRF 16 · visually transparent · HEVC",        "libx265",    "aac",      "crf",  16, "320k", "",    ""},
                 {"H.265 · Small File",   "CRF 26 · excellent compression",              "libx265",    "aac",      "crf",  26, "192k", "",    ""},
+#ifdef __APPLE__
+                {"H.264 VideoToolbox",   "GPU-accelerated H.264 · Apple Silicon/Intel", "h264_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
+                {"H.265 VideoToolbox",   "GPU-accelerated HEVC · Apple Silicon/Intel",  "hevc_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
+#elif defined(__linux__)
+                {"H.264 NVENC",          "GPU H.264 · NVIDIA only",                    "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 NVENC",          "GPU H.265 · NVIDIA only",                    "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.264 VA-API",         "GPU H.264 · AMD/Intel/NVIDIA (VA-API)",       "h264_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 VA-API",         "GPU H.265 · AMD/Intel/NVIDIA (VA-API)",       "hevc_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
+#else
                 {"H.264 NVENC",          "GPU-accelerated H.264 · NVIDIA only",         "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
                 {"H.265 NVENC",          "GPU-accelerated HEVC · NVIDIA only",          "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+#endif
             }},
             {"mkv", PL{
                 {"H.264 · Balanced",     "CRF 20 · great quality · wide compat",        "libx264",    "aac",      "crf",  20, "320k", "",    ""},
@@ -371,8 +385,18 @@ public:
                 {"VP9 · High Quality",   "CRF 20 · excellent quality",                  "libvpx-vp9", "libopus",  "crf",  20, "192k", "",    ""},
                 {"AV1 · High Quality",   "CRF 18 · best compression · slow encode",     "libaom-av1", "libopus",  "crf",  18, "192k", "",    ""},
                 {"H.264 · VBR 2-pass",   "10M target · 15M max · best accuracy",        "libx264",    "aac",      "vbr2", -1, "320k", "10M", "15M"},
+#ifdef __APPLE__
+                {"H.264 VideoToolbox",   "GPU H.264 · Apple Silicon/Intel",             "h264_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
+                {"H.265 VideoToolbox",   "GPU HEVC · Apple Silicon/Intel",              "hevc_videotoolbox", "aac", "crf", -1, "320k", "",  ""},
+#elif defined(__linux__)
+                {"H.264 NVENC",          "GPU H.264 · NVIDIA only",                    "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 NVENC",          "GPU H.265 · NVIDIA only",                    "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.264 VA-API",         "GPU H.264 · AMD/Intel/NVIDIA (VA-API)",       "h264_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 VA-API",         "GPU H.265 · AMD/Intel/NVIDIA (VA-API)",       "hevc_vaapi", "aac",      "crf",  -1, "320k", "",    ""},
+#else
                 {"H.264 NVENC",          "GPU H.264 · NVIDIA only",                     "h264_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
-                {"H.265 NVENC",          "GPU HEVC · NVIDIA only",                      "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+                {"H.265 NVENC",          "GPU H.265 · NVIDIA only",                     "hevc_nvenc", "aac",      "crf",  -1, "320k", "",    ""},
+#endif
             }},
             {"webm", PL{
                 {"VP9 · Balanced",       "CRF 28 · great quality · good browser support","libvpx-vp9", "libopus", "crf",  28, "192k", "",    ""},
@@ -385,7 +409,7 @@ public:
             {"mov", PL{
                 {"H.264 · Balanced",     "CRF 20 · Final Cut / QuickTime",              "libx264",    "aac",      "crf",  20, "320k", "",    ""},
                 {"H.264 · High Quality", "CRF 16 · visually transparent",               "libx264",    "aac",      "crf",  16, "320k", "",    ""},
-                {"ProRes 422",           "Near-lossless · pro editing · large file",    "prores_ks",  "pcm_s16le","crf",  -1, "",     "",    ""},
+                {"ProRes 422",           "Near-lossless · Apple workflow · large file",  "prores_ks",  "pcm_s16le","crf",  -1, "",     "",    ""},
             }},
             {"avi", PL{
                 {"MPEG-4 · Compat",      "Widest AVI compatibility",                    "mpeg4",      "libmp3lame","crf", -1, "320k", "",    ""},

@@ -264,8 +264,7 @@ private:
 
         if (job.onProgress) job.onProgress(0.1f, "Extracting frames...");
 
-        fs::path tempDir = makeTempName("anyfile_seq_");
-        fs::create_directories(tempDir);
+        fs::path tempDir = makeTempDir("anyfile_seq_");
 
         fs::path framePattern = tempDir / ("frame%04d." + outExt);
 
@@ -345,7 +344,7 @@ private:
             std::ifstream f(filePath.string(), std::ios::binary);
             std::vector<char> buf(8192);
             while ((f.read(buf.data(), buf.size()), f.gcount() > 0))
-                archive_write_data(a, buf.data(), (size_t)f.gcount());
+                archive_write_data(a, buf.data(), static_cast<size_t>(f.gcount()));
 
             archive_entry_free(entry);
         }

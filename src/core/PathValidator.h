@@ -196,9 +196,21 @@ private:
         return "";
     }
 
-    // Returns an error string if the canonical path is inside a protected
-    // OS directory; returns empty string if the path is permitted.
-    static std::string checkBlocklist(const fs::path& canonical) {
+    /// Returns an error string if @p canonical falls inside a protected OS
+    /// directory; returns an empty string if the path is permitted.
+    ///
+    /// The list is platform-specific:
+    ///   - Windows  : system32, Program Files, ProgramData, and (outside
+    ///                sandbox mode) the entire C:\\Users tree.
+    ///   - macOS    : SIP-protected /System, /Library system subdirs,
+    ///                /private/etc, /private/var/db, and standard tool dirs.
+    ///   - Linux    : /etc, /proc, /sys, /dev, /boot, and standard tool dirs.
+    ///
+    /// Home-directory blocking is intentionally skipped in sandbox mode on
+    /// every platform: the sandbox boundary already restricts access, and a
+    /// sandbox root that legitimately lives under a user profile must not be
+    /// blocked by this check.
+    [[nodiscard]] static std::string checkBlocklist(const fs::path& canonical) {
 #ifdef _WIN32
         // Normalise to lowercase with forward slashes for uniform prefix matching.
         std::string p;
@@ -207,13 +219,84 @@ private:
             p += static_cast<char>(std::tolower(c));
         std::replace(p.begin(), p.end(), '\\', '/');
 
+        // Block UNC paths (\\server\share → //server/share after normalisation).
+        // File conversion has no business touching network shares.
+        if (p.starts_with("//"))
+            return "Access to UNC network paths is not permitted: "
+                 + canonical.string();
+
+        // Extract the path component after the drive root (e.g. "c:/windows/…"
+        // → "/windows/…") so that the same blocked-directory names apply
+        // regardless of which drive letter Windows is installed on.
+        bool hasDrive = (p.size() >= 3
+                      && std::isalpha(static_cast<unsigned char>(p[0]))
+                      && p[1] == ':' && p[2] == '/');
+        const std::string pathAfterDrive = hasDrive ? p.substr(2) : p;
+
         // These directories contain OS binaries, system config, and other
         // files that file-conversion software has no business touching.
+        // Checked against pathAfterDrive so they match on any drive letter.
         static const char* const BLOCKED[] = {
-            "c:/windows",
-            "c:/program files",
-            "c:/program files (x86)",
-            "c:/programdata",
+            "/windows",
+            "/program files",
+            "/program files (x86)",
+            "/programdata",
+            nullptr
+        };
+        for (int i = 0; BLOCKED[i]; ++i) {
+            std::string b = BLOCKED[i];
+            if (pathAfterDrive == b || pathAfterDrive.starts_with(b + '/'))
+                return "Access to system directory is not permitted: "
+                     + canonical.string();
+        }
+
+        // User-profile directories (X:\Users\…) are only blocked in desktop
+        // mode (no sandbox). In sandbox mode the sandbox check above already
+        // restricts access; blocking X:\Users here would prevent a sandbox
+        // that legitimately lives under a user profile from working.
+        // USERPROFILE is checked to allow the current user's own home tree.
+        if (!get_config().sandboxRoot.has_value()) {
+            if (hasDrive && pathAfterDrive.starts_with("/users/")) {
+                const char* userProfileRaw = std::getenv("USERPROFILE");
+                std::string ownHome;
+                if (userProfileRaw) {
+                    for (unsigned char c : std::string(userProfileRaw))
+                        ownHome += static_cast<char>(std::tolower(c));
+                    std::replace(ownHome.begin(), ownHome.end(), '\\', '/');
+                }
+                bool isOwnHome = !ownHome.empty() &&
+                                 (p == ownHome || p.starts_with(ownHome + '/'));
+                if (!isOwnHome)
+                    return "Access to other users' home directories is not permitted: "
+                         + canonical.string();
+            }
+        }
+
+#elif defined(__APPLE__)
+        const std::string& p = canonical.string();
+
+        // macOS system directories protected by SIP (System Integrity Protection)
+        // or that contain critical OS state.  A file converter has no legitimate
+        // reason to read or write any of these.
+        //
+        // Note: on macOS /etc, /tmp, and /var are symlinks into /private/.
+        // fs::canonical() resolves them, so we block the real /private/... paths.
+        static const char* const BLOCKED[] = {
+            "/System",              // SIP-protected OS core — never writable
+            "/Library/Preferences", // System-wide preference plists
+            "/Library/Application Support/com.apple", // Apple system support
+            "/Library/LaunchDaemons",  // Root-level persistent daemons
+            "/Library/LaunchAgents",   // Per-user persistent agents
+            "/Library/StartupItems",   // Legacy startup items
+            "/private/etc",         // Real /etc (symlink target)
+            "/private/var/db",      // System databases (kext cache, etc.)
+            "/private/var/run",     // Runtime state (PID files, sockets)
+            "/usr/bin",
+            "/usr/sbin",
+            "/usr/lib",
+            "/usr/libexec",
+            "/bin",
+            "/sbin",
             nullptr
         };
         for (int i = 0; BLOCKED[i]; ++i) {
@@ -223,16 +306,24 @@ private:
                      + canonical.string();
         }
 
-        // User-profile directories (C:\Users\...) are only blocked in desktop
-        // mode (no sandbox). In sandbox mode the sandbox check above already
-        // restricts access; blocking C:\Users here would prevent a sandbox
-        // that legitimately lives under a user profile from working.
+        // Block access to OTHER users' home directories.  The current user's
+        // own home directory (/Users/<me>/...) must remain accessible — it is
+        // where Downloads, Desktop, Documents, and all normal work files live.
+        // In sandbox mode the sandbox root is the effective boundary anyway.
         if (!get_config().sandboxRoot.has_value()) {
-            if (p.starts_with("c:/users/"))
-                return "Access to user profile directories is not permitted: "
-                     + canonical.string();
+            if (p.starts_with("/Users/")) {
+                const char* home = std::getenv("HOME");
+                std::string ownHome = home ? std::string(home) : "";
+                // Allow anything inside the current user's own home tree.
+                bool isOwnHome = !ownHome.empty() &&
+                                 (p == ownHome || p.starts_with(ownHome + '/'));
+                if (!isOwnHome)
+                    return "Access to other users' home directories is not permitted: "
+                         + canonical.string();
+            }
         }
-#else
+
+#else  // Linux
         const std::string& p = canonical.string();
 
         // Core OS directories that should never be read or written by a
@@ -263,12 +354,18 @@ private:
                      + canonical.string();
         }
 
-        // Home directories: same logic as Windows — only block in desktop mode.
-        // In sandbox mode the sandbox root is the effective boundary.
+        // Block access to OTHER users' home directories, but allow the current
+        // user's own home tree so they can convert files in ~/Downloads etc.
         if (!get_config().sandboxRoot.has_value()) {
-            if (p.starts_with("/home/") || p == "/root" || p.starts_with("/root/"))
-                return "Access to user home directories is not permitted: "
-                     + canonical.string();
+            if (p.starts_with("/home/") || p == "/root" || p.starts_with("/root/")) {
+                const char* home = std::getenv("HOME");
+                std::string ownHome = home ? std::string(home) : "";
+                bool isOwnHome = !ownHome.empty() &&
+                                 (p == ownHome || p.starts_with(ownHome + '/'));
+                if (!isOwnHome)
+                    return "Access to other users' home directories is not permitted: "
+                         + canonical.string();
+            }
         }
 #endif
         return "";

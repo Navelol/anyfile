@@ -206,7 +206,7 @@ TEST_CASE("FormatRegistry - magic number detection", "[registry][magic]") {
         fs::remove(p);
         REQUIRE(fmt.has_value());
         REQUIRE(fmt->category == Category::Image);
-        REQUIRE(fmt->ext == "jpeg");
+        REQUIRE(fmt->ext == "jpg");
     }
 
     SECTION("GZ magic bytes detected") {

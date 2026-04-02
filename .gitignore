@@ -45,3 +45,13 @@ dist/
 # Release files
 website-content.txt
 releasenote.txt
+
+# Clangd specific files
+.cache/
+
+# AI specific files
+.claude/
+.swarm/
+.claude-flow/
+.mcp.json
+CLAUDE.md
